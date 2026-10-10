@@ -1,0 +1,9 @@
+.git
+.venv
+data
+output
+tests
+tools
+design
+web/preview.html
+__pycache__

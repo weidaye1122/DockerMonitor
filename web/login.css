@@ -1,0 +1,31 @@
+#dock-preview.dw-login-page{min-height:100dvh;background:var(--dw-bg);display:flex;flex-direction:column}
+#dock-preview .dw-login-header{display:flex;justify-content:space-between;align-items:center;padding:28px 40px;gap:16px}
+#dock-preview .dw-login-brand{display:flex;align-items:center;gap:12px;text-decoration:none;color:var(--dw-text);font-size:18px;font-weight:650;letter-spacing:-.4px}
+#dock-preview .dw-login-header .dw-theme-button{padding:7px 9px}
+#dock-preview .dw-login-main{flex:1;display:grid;place-items:center;padding:30px 24px 60px}
+#dock-preview .dw-login-card{width:100%;max-width:420px;padding:38px;background:var(--dw-panel);border:1px solid var(--dw-line);border-radius:26px;box-shadow:0 18px 60px var(--dw-shadow)}
+#dock-preview .dw-login-mark{display:grid;place-items:center;width:52px;height:52px;background:transparent;border:0;border-radius:15px;margin-bottom:24px}
+#dock-preview .dw-login-mark img{display:block;width:52px;height:52px}
+#dock-preview .dw-login-card h1{font-size:24px;letter-spacing:-.5px;line-height:1.4;margin:0 0 8px}
+#dock-preview .dw-login-subtitle{margin:0 0 30px;color:var(--dw-sub);font-size:13px}
+#dock-preview #login-form label{display:block;font-size:13px;font-weight:550;margin-bottom:9px}
+#dock-preview .dw-login-input{display:flex;align-items:center;gap:11px;min-height:48px;padding:0 13px;border:1px solid var(--dw-line);border-radius:12px;background:var(--dw-panel-alt);margin-bottom:21px;transition:border-color .15s,box-shadow .15s}
+#dock-preview .dw-login-input:focus-within{border-color:var(--dw-blue);box-shadow:0 0 0 3px var(--dw-blue-soft)}
+#dock-preview .dw-login-input>svg{width:17px;height:17px;flex-shrink:0;color:var(--dw-sub)}
+#dock-preview .dw-login-input input{color:var(--dw-text);min-width:0;width:100%;border:0;background:transparent;padding:12px 0;outline:none;font-size:14px}
+#dock-preview .dw-login-input input::placeholder{color:var(--dw-sub)}
+#dock-preview #toggle-password{display:grid;place-items:center;padding:5px;border:0;background:transparent;color:var(--dw-sub);border-radius:5px}
+#dock-preview #toggle-password svg{width:17px;height:17px}
+#dock-preview #login-error{font-size:12px;line-height:1.6;color:var(--dw-red);background:var(--dw-red-soft);border-radius:7px;padding:9px 11px;margin:-4px 0 16px}
+#dock-preview .dw-login-submit{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;min-height:48px;border:0;border-radius:12px;background:var(--dw-blue);color:light-dark(#fff,#101727);font-weight:600;font-size:14px}
+#dock-preview .dw-login-submit:hover{filter:brightness(1.06)}
+#dock-preview .dw-login-submit:disabled{opacity:.7;cursor:wait}
+#dock-preview .dw-login-submit svg{width:17px;height:17px}
+#dock-preview .dw-login-foot{display:flex;align-items:center;justify-content:center;gap:6px;border-top:1px solid var(--dw-line);margin-top:28px;padding-top:21px;color:var(--dw-sub);font-size:11px}
+#dock-preview .dw-login-foot svg{width:14px;height:14px}
+#dock-preview .dw-login-footer{text-align:center;color:var(--dw-sub);font-size:11px;padding:0 24px 24px;letter-spacing:.3px}
+#dock-preview .dw-logout{display:flex;align-items:center;gap:5px;background:transparent;border:0;color:var(--dw-sub);font-size:12px;padding:7px;border-radius:6px;white-space:nowrap}
+#dock-preview .dw-logout:hover{background:var(--dw-panel-alt);color:var(--dw-text)}
+#dock-preview .dw-logout svg{width:15px;height:15px}
+@media(max-width:520px){#dock-preview .dw-login-header{padding:20px}#dock-preview .dw-login-brand{font-size:16px;gap:9px}#dock-preview .dw-login-main{padding:24px 20px 40px}#dock-preview .dw-login-card{padding:28px 24px}#dock-preview .dw-login-card h1{font-size:22px}}
+@media(max-height:800px){#dock-preview .dw-login-header{padding-top:20px;padding-bottom:20px}#dock-preview .dw-login-main{padding-top:12px;padding-bottom:24px}#dock-preview .dw-login-card{padding-top:30px;padding-bottom:28px}#dock-preview .dw-login-mark{margin-bottom:20px}#dock-preview .dw-login-subtitle{margin-bottom:24px}#dock-preview .dw-login-footer{padding-bottom:16px}}
