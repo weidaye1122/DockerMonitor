@@ -4,7 +4,7 @@
 
 ## Docker 安装
 
-镜像：[weidaye1122/docker_monitor](https://hub.docker.com/r/weidaye1122/docker_monitor)。支持 `linux/amd64`（常见 x86 群晖、PC）和 `linux/arm64`（ARM64 主机）。`latest` 跟随最新正式版本，固定版本可使用 `1.0.0`。
+镜像：[weidaye1122/docker_monitor](https://hub.docker.com/r/weidaye1122/docker_monitor)。支持 `linux/amd64`（常见 x86 群晖、PC）和 `linux/arm64`（ARM64 主机）。`latest` 跟随最新正式版本，固定版本可使用 `1.0.1`。版本改动见 [更新日志](CHANGELOG.md)。
 
 ### Compose 安装（推荐）
 
@@ -48,7 +48,7 @@ docker compose pull
 docker compose up -d
 ```
 
-固定版本安装将镜像改为 `weidaye1122/docker_monitor:1.0.0`。仅允许本机访问时，将端口改为 `"127.0.0.1:9090:8080"`。
+固定版本安装将镜像改为 `weidaye1122/docker_monitor:1.0.1`。仅允许本机访问时，将端口改为 `"127.0.0.1:9090:8080"`。
 
 ### 使用仓库内的 Compose
 
@@ -99,6 +99,40 @@ docker compose -f compose.yaml -f compose.build.yaml up -d --build
 ```
 
 上述命令使用本地 `docker-monitor:local` 镜像。已有 Docker Desktop / Linux ARM64 容器和 x86 群晖 Compose 部署验证记录见下文。
+
+### HTTPS 反代与穿透隧道
+
+支持通过 Lucky、Nginx/Nginx Proxy Manager、群晖反向代理，以及 FRP、Cloudflare Tunnel 等隧道访问。后端仍使用 HTTP；浏览器来源校验和登录 Cookie 会按可信代理传来的外部协议、域名和端口处理，支持非标准端口和 IPv6。代理应保留外部 `Host`（包含端口），传递 `X-Forwarded-Proto`；若改写 Host，应另外传递 `X-Forwarded-Host`，端口也可由 `X-Forwarded-Port` 提供。显式 Host 端口优先于单独的端口头。
+
+若隧道没有传递这些头，或外部地址与后端地址不同，可在 Compose 的 `environment` 中明确指定外部地址。例如 Lucky 的访问地址为 `https://dm.543221.xyz:6/`：
+
+```yaml
+      PUBLIC_URL: "https://dm.543221.xyz:6"
+```
+
+使用仓库内的 Compose 时，也可在 `.env` 添加 `PUBLIC_URL=https://dm.543221.xyz:6`。Docker run 安装则增加 `-e PUBLIC_URL=https://dm.543221.xyz:6`。修改后重新创建容器。这个配置只额外允许该外部来源；局域网 HTTP 直连仍可登录。隧道需转发整个站点，包括 `/api/` 和静态资源，且不能删除请求中的 `Origin`、`X-Monitor-Request` 或 Cookie。
+
+默认只信任回环地址发来的代理头。Docker、NAS 或远程代理可用 `TRUSTED_PROXY_IPS` 明确指定后端实际看到的代理连接 IP，多个 IP 或 CIDR 用逗号分隔，例如：
+
+```yaml
+      TRUSTED_PROXY_IPS: "127.0.0.1,::1,172.18.0.1"
+```
+
+代理必须覆盖来自客户端的协议、主机和端口头；后端端口应仅供代理或信任的使用者访问。私网地址不自动被视为代理，因为 Docker 端口映射也可能把普通客户端显示为网桥 IP。固定外部地址场景只需配置 `PUBLIC_URL` 即可修复来源校验，无需放开代理头信任。多层代理应由最终转发到后端的一层提供正确的外部地址；可信 `X-Forwarded-For` 会按代理链解析，以区分不同客户端的登录限流。没有可信真实客户端地址时，登录限流仍按代理或隧道连接地址共享。
+
+HTTPS 在 Nginx 这一层终止时，可使用以下配置（上游端口按实际修改）：
+
+```nginx
+location / {
+    proxy_pass http://127.0.0.1:9090;
+    proxy_set_header Host $http_host;
+    proxy_set_header X-Forwarded-Host $http_host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+}
+```
+
+容器启动命令已设置 `--no-proxy-headers`，由应用统一解析代理头。自定义 Uvicorn 启动命令也应保留此参数，避免重复解析丢失原始代理 IP。当前部署在域名根路径，例如 `https://monitor.example.com/`；不支持直接挂到 `/docker-monitor/` 等子路径。静态资源、API、PWA 图标和通知默认地址均使用同源根路径。
 
 ## 群晖部署
 
@@ -202,7 +236,7 @@ python3 -m venv .venv
 .venv/bin/pip install -r requirements-dev.txt
 .venv/bin/python -m pytest -q
 # Linux 默认 /var/run/docker.sock；Docker Desktop 设置成其当前 context 的 socket。
-DOCKER_HOST=unix:///var/run/docker.sock .venv/bin/uvicorn backend.app:app --host 127.0.0.1 --port 9090
+DOCKER_HOST=unix:///var/run/docker.sock .venv/bin/uvicorn backend.app:app --host 127.0.0.1 --port 9090 --no-proxy-headers
 ```
 
 本地交互预览（使用内存中的模拟容器，不连接 Docker，不操作群晖）：

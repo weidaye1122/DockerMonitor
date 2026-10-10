@@ -14,6 +14,7 @@ from .service import Service
 from .store import Store
 from .auth import Auth, COOKIE, SESSION_SECONDS
 from .icons import install_routes
+from .proxy import ReverseProxyMiddleware, parse_origin
 
 
 class Policy(BaseModel):
@@ -65,6 +66,16 @@ def create_app(service=None):
     auth = Auth(os.environ.get("ADMIN_PASSWORD", ""), os.environ.get("ADMIN_USERNAME", "admin") or "admin")
     app.state.auth = auth
     web = Path(__file__).resolve().parent.parent / "web"
+    public_url = os.environ.get("PUBLIC_URL", "").strip()
+    public_origin = parse_origin(public_url)
+    if public_url and public_origin is None:
+        raise ValueError("PUBLIC_URL 必须是 HTTP/HTTPS 根地址，可包含端口，不能包含子路径、查询或用户信息")
+
+    def secure_cookie(request):
+        # Tunnels may discard every proxy header. A configured HTTPS origin
+        # still requires a Secure cookie for browser login/logout requests.
+        return request.url.scheme == "https" or (public_origin is not None
+            and public_origin[0] == "https" and parse_origin(request.headers.get("origin")) == public_origin)
 
     @app.middleware("http")
     async def guard(request: Request, call_next):
@@ -74,7 +85,9 @@ def create_app(service=None):
             rejection = JSONResponse({"detail": "登录已过期，请重新登录"}, 401) if request.url.path.startswith("/api/") else RedirectResponse("/login", status_code=303)
         if request.method not in ("GET", "HEAD", "OPTIONS"):
             origin = request.headers.get("origin")
-            if origin and origin != str(request.base_url).rstrip("/"):
+            actual_origin = parse_origin(origin)
+            request_origin = parse_origin(request.url.scheme + "://" + request.url.netloc)
+            if origin is not None and (actual_origin is None or actual_origin not in (request_origin, public_origin)):
                 rejection = JSONResponse({"detail": "请求来源不匹配"}, 403)
             if request.headers.get("x-monitor-request") != "1":
                 rejection = JSONResponse({"detail": "缺少操作请求标识"}, 403)
@@ -122,14 +135,14 @@ def create_app(service=None):
         if status != 200:
             return JSONResponse({"detail": "尝试次数过多，请 5 分钟后再试" if status == 429 else "账号或密码不正确"}, status)
         response = JSONResponse({"authenticated": True})
-        response.set_cookie(COOKIE, token, max_age=SESSION_SECONDS, httponly=True, secure=request.url.scheme == "https", samesite="strict", path="/")
+        response.set_cookie(COOKIE, token, max_age=SESSION_SECONDS, httponly=True, secure=secure_cookie(request), samesite="strict", path="/")
         return response
 
     @app.post("/api/auth/logout")
     def logout(request: Request):
         auth.logout(request.cookies.get(COOKIE))
         response = JSONResponse({"authenticated": False})
-        response.delete_cookie(COOKIE, path="/", httponly=True, secure=request.url.scheme == "https", samesite="strict")
+        response.delete_cookie(COOKIE, path="/", httponly=True, secure=secure_cookie(request), samesite="strict")
         return response
 
     @app.get("/api/snapshot")
@@ -187,6 +200,8 @@ def create_app(service=None):
             raise HTTPException(404, "任务不存在")
         return {k: job.get(k) for k in ("id", "name", "action", "status", "message", "rolledBack", "createdAt", "finishedAt", "errors")}
 
+    # Added last so the guard and cookie handling see the public URL.
+    app.add_middleware(ReverseProxyMiddleware)
     install_routes(app)
     app.mount("/", StaticFiles(directory=web, html=True), name="web")
     return app
