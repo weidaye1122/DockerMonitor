@@ -4,10 +4,59 @@
 
 ## Docker 安装
 
-在项目目录执行：
+镜像：[weidaye1122/docker_monitor](https://hub.docker.com/r/weidaye1122/docker_monitor)。支持 `linux/amd64`（常见 x86 群晖、PC）和 `linux/arm64`（ARM64 主机）。`latest` 跟随最新正式版本，固定版本可使用 `1.0.0`。
+
+### Compose 安装（推荐）
+
+新建目录，将以下内容保存为 `compose.yaml`。将账号密码换成自己的值：
+
+```yaml
+services:
+  docker-monitor:
+    image: weidaye1122/docker_monitor:latest
+    container_name: docker-monitor
+    restart: unless-stopped
+    labels:
+      docker-monitor.protected: "true"
+    ports:
+      - "9090:8080"
+    environment:
+      TZ: Asia/Shanghai
+      ADMIN_USERNAME: "admin"
+      ADMIN_PASSWORD: "请替换为自己的强密码"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./data:/data
+```
+
+在该目录执行：
 
 ```sh
-docker compose up -d --build
+mkdir -p data
+docker compose pull
+docker compose up -d
+docker compose ps
+docker compose logs --tail=50
+```
+
+打开 `http://主机IP:9090`，使用配置的账号密码登录。群晖可在 Container Manager 中创建项目并粘贴以上 YAML；建议项目目录为 `/volume1/docker/DockerMonitor`。若 9090 已占用，可改为 `"19090:8080"` 并访问 19090 端口。`./data` 保存策略、任务及通知配置，升级时保留该目录。Docker socket 挂载让程序能够管理主机容器，请只向信任的网络和使用者开放。
+
+升级时在原目录执行：
+
+```sh
+docker compose pull
+docker compose up -d
+```
+
+固定版本安装将镜像改为 `weidaye1122/docker_monitor:1.0.0`。仅允许本机访问时，将端口改为 `"127.0.0.1:9090:8080"`。
+
+### 使用仓库内的 Compose
+
+仓库内的 `compose.yaml` 默认只绑定本机回环地址。在项目目录执行：
+
+```sh
+docker compose pull
+docker compose up -d
 docker compose ps
 docker compose logs --tail=50
 ```
@@ -23,18 +72,33 @@ ADMIN_PASSWORD=请替换为自己的密码
 
 重新执行 `docker compose up -d`。账号与密码分别由 `ADMIN_USERNAME`、`ADMIN_PASSWORD` 指定，账号默认为 `admin`。配置密码后，未登录访问会进入独立登录页，支持浅色、暗色和跟随系统。登录会话有效期为 12 小时，退出立即失效；服务重启后需要重新登录。密码留空时保留本机开发访问方式。Docker socket 挂载让这个服务能够操作主机上的容器，应只向信任的使用者开放。
 
-也可使用本地已构建镜像运行：
+### Docker run 安装
+
+也可直接拉取镜像运行，将账号密码换成自己的值：
 
 ```sh
+mkdir -p /opt/docker-monitor/data
+docker pull weidaye1122/docker_monitor:latest
 docker run -d --name docker-monitor --restart unless-stopped \
   --label docker-monitor.protected=true \
-  -p 127.0.0.1:9090:8080 \
+  -p 9090:8080 \
+  -e TZ=Asia/Shanghai \
+  -e ADMIN_USERNAME=admin \
+  -e ADMIN_PASSWORD='请替换为自己的强密码' \
   -v /var/run/docker.sock:/var/run/docker.sock \
-  -v docker-monitor-data:/data \
-  docker-monitor:local
+  -v /opt/docker-monitor/data:/data \
+  weidaye1122/docker_monitor:latest
+docker logs --tail=50 docker-monitor
+curl -fsS http://127.0.0.1:9090/healthz
 ```
 
-镜像尚未发布到公共仓库；上述 `docker-monitor:local` 由本项目 Dockerfile 构建。当前已在 Docker Desktop / Linux ARM64 容器上运行验证，并完成 x86 群晖 Compose 部署及健康接口验证。
+### 从源码构建
+
+```sh
+docker compose -f compose.yaml -f compose.build.yaml up -d --build
+```
+
+上述命令使用本地 `docker-monitor:local` 镜像。已有 Docker Desktop / Linux ARM64 容器和 x86 群晖 Compose 部署验证记录见下文。
 
 ## 群晖部署
 

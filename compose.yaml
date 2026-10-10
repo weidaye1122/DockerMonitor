@@ -1,7 +1,6 @@
 services:
   docker-monitor:
-    build: .
-    image: docker-monitor:local
+    image: weidaye1122/docker_monitor:latest
     container_name: docker-monitor
     restart: unless-stopped
     labels:

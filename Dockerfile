@@ -1,5 +1,10 @@
 FROM python:3.12-slim
+ARG VERSION=dev
+ARG REVISION=unknown
 LABEL org.opencontainers.image.title="Docker Monitor"
+LABEL org.opencontainers.image.source="https://github.com/weidaye1122/DockerMonitor"
+LABEL org.opencontainers.image.version=$VERSION
+LABEL org.opencontainers.image.revision=$REVISION
 WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 DATA_PATH=/data/monitor.sqlite3 TZ=Asia/Shanghai
 COPY requirements.txt ./
