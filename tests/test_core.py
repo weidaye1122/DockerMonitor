@@ -1,3 +1,4 @@
+from tests.http_helpers import csrf_headers
 import copy
 from datetime import datetime
 from types import SimpleNamespace
@@ -114,8 +115,8 @@ def test_api_validation_csrf_and_persistent_policy(store, monkeypatch):
     client = TestClient(create_app(service))
     body = {"checkCron": "0 */6 * * *", "updateMode": "delay", "waitHours": 24, "auto": []}
     assert client.put("/api/policy", json=body).status_code == 403
-    headers = {"X-Monitor-Request": "1"}
-    assert client.put("/api/policy", json=body, headers={**headers, "Origin": "https://elsewhere.test"}).status_code == 403
+    headers = csrf_headers(client)
+    assert client.put("/api/policy", json=body, headers={**headers, "Sec-Fetch-Site": "cross-site"}).status_code == 403
     assert client.put("/api/policy", json=body, headers=headers).status_code == 200
     assert Store(store.db.execute("PRAGMA database_list").fetchone()[2]).policy()["updateMode"] == "delay"
     assert client.put("/api/policy", json={**body, "checkCron": "0 99 * * *"}, headers=headers).status_code == 422
@@ -130,7 +131,7 @@ def test_session_auth_is_applied_to_api(store, monkeypatch):
     client = TestClient(create_app(service))
     assert client.get("/api/policy").status_code == 401
     assert client.get("/api/policy", auth=("admin", "test-password")).status_code == 401
-    assert client.post("/api/auth/login", json={"username": "admin", "password": "test-password"}, headers={"X-Monitor-Request": "1"}).status_code == 200
+    assert client.post("/api/auth/login", json={"username": "admin", "password": "test-password"}, headers=csrf_headers(client)).status_code == 200
     assert client.get("/api/policy").status_code == 200
     assert client.get("/healthz").status_code == 200
     service.close()

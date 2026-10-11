@@ -52,6 +52,11 @@ checking = False
 notify_settings = dict(enabled=False, configured=False, server='', siteUrl='', iconUrl='', onAvailable=True, onSuccess=True, onFailure=True)
 
 
+@app.get('/api/auth/csrf')
+def csrf_preview():
+    return {'token': 'preview-only'}
+
+
 @app.get('/api/notifications')
 def notifications():
     return notify_settings

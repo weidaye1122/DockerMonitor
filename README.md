@@ -4,7 +4,7 @@
 
 ## Docker 安装
 
-镜像：[weidaye1122/docker_monitor](https://hub.docker.com/r/weidaye1122/docker_monitor)。支持 `linux/amd64`（常见 x86 群晖、PC）和 `linux/arm64`（ARM64 主机）。`latest` 跟随最新正式版本，固定版本可使用 `1.0.1`。版本改动见 [更新日志](CHANGELOG.md)。
+镜像：[weidaye1122/docker_monitor](https://hub.docker.com/r/weidaye1122/docker_monitor)。支持 `linux/amd64`（常见 x86 群晖、PC）和 `linux/arm64`（ARM64 主机）。`latest` 跟随最新正式版本，固定版本可使用 `1.0.2`。版本改动见 [更新日志](CHANGELOG.md)。
 
 ### Compose 安装（推荐）
 
@@ -48,7 +48,7 @@ docker compose pull
 docker compose up -d
 ```
 
-固定版本安装将镜像改为 `weidaye1122/docker_monitor:1.0.1`。仅允许本机访问时，将端口改为 `"127.0.0.1:9090:8080"`。
+固定版本安装将镜像改为 `weidaye1122/docker_monitor:1.0.2`。仅允许本机访问时，将端口改为 `"127.0.0.1:9090:8080"`。
 
 ### 使用仓库内的 Compose
 
@@ -102,23 +102,19 @@ docker compose -f compose.yaml -f compose.build.yaml up -d --build
 
 ### HTTPS 反代与穿透隧道
 
-支持通过 Lucky、Nginx/Nginx Proxy Manager、群晖反向代理，以及 FRP、Cloudflare Tunnel 等隧道访问。后端仍使用 HTTP；浏览器来源校验和登录 Cookie 会按可信代理传来的外部协议、域名和端口处理，支持非标准端口和 IPv6。代理应保留外部 `Host`（包含端口），传递 `X-Forwarded-Proto`；若改写 Host，应另外传递 `X-Forwarded-Host`，端口也可由 `X-Forwarded-Port` 提供。显式 Host 端口优先于单独的端口头。
+通过 Lucky、Nginx/Nginx Proxy Manager、群晖反向代理，以及 FRP、Cloudflare Tunnel 等隧道访问时，无需填写 `PUBLIC_URL` 或可信代理地址才能登录。页面自动获取 Cookie 和会话绑定的签名 CSRF Token，登录、退出和所有写操作均提交令牌；不再将浏览器外部地址与后端 HTTP 地址比较。支持 HTTPS、非标准端口、IPv6、改写 Host 以及丢失代理头的隧道，局域网 HTTP 直连仍可使用。旧版添加的 `PUBLIC_URL` 可删除，保留也不影响登录。
 
-若隧道没有传递这些头，或外部地址与后端地址不同，可在 Compose 的 `environment` 中明确指定外部地址。例如 Lucky 的访问地址为 `https://dm.543221.xyz:6/`：
+浏览器自动传递实际 HTTP/HTTPS 协议信息，仅用于 Cookie 的 Secure 标记，不作为请求授权。HTTPS 外部访问即使经过 HTTP 后端，也会使用 Secure、HttpOnly、SameSite=Strict Cookie。CSRF Token 不缓存，并绑定当前会话；令牌过期或服务重启后，页面只对明确被 CSRF 校验拒绝、尚未执行的操作刷新令牌并重试一次。登录过期仍需重新登录。
 
-```yaml
-      PUBLIC_URL: "https://dm.543221.xyz:6"
-```
+代理和隧道需转发整个站点（包括 `/api/` 和静态资源），保留 Cookie 和页面提交的自定义请求头。无需配置 CORS 或放开跨站访问。当前浏览器通过 `Sec-Fetch-Site` 拦截明确跨站操作，较旧浏览器仍由签名 CSRF Token、自定义请求头和浏览器同源读取限制保护。
 
-使用仓库内的 Compose 时，也可在 `.env` 添加 `PUBLIC_URL=https://dm.543221.xyz:6`。Docker run 安装则增加 `-e PUBLIC_URL=https://dm.543221.xyz:6`。修改后重新创建容器。这个配置只额外允许该外部来源；局域网 HTTP 直连仍可登录。隧道需转发整个站点，包括 `/api/` 和静态资源，且不能删除请求中的 `Origin`、`X-Monitor-Request` 或 Cookie。
-
-默认只信任回环地址发来的代理头。Docker、NAS 或远程代理可用 `TRUSTED_PROXY_IPS` 明确指定后端实际看到的代理连接 IP，多个 IP 或 CIDR 用逗号分隔，例如：
+`TRUSTED_PROXY_IPS` 仅用于可信代理提供的外部地址和真实客户端 IP 识别，不是登录前提。默认只信任回环地址；需要按外部客户端 IP 区分登录限流时，可添加后端实际看到的代理连接 IP，多个 IP 或 CIDR 用逗号分隔：
 
 ```yaml
       TRUSTED_PROXY_IPS: "127.0.0.1,::1,172.18.0.1"
 ```
 
-代理必须覆盖来自客户端的协议、主机和端口头；后端端口应仅供代理或信任的使用者访问。私网地址不自动被视为代理，因为 Docker 端口映射也可能把普通客户端显示为网桥 IP。固定外部地址场景只需配置 `PUBLIC_URL` 即可修复来源校验，无需放开代理头信任。多层代理应由最终转发到后端的一层提供正确的外部地址；可信 `X-Forwarded-For` 会按代理链解析，以区分不同客户端的登录限流。没有可信真实客户端地址时，登录限流仍按代理或隧道连接地址共享。
+可信代理应覆盖客户端自带的代理头；后端端口应仅供代理或信任的使用者访问。没有可信真实客户端地址时，登录限流仍按代理或隧道连接地址共享。代理可以传递 `X-Forwarded-Proto`、`X-Forwarded-Host` 和 `X-Forwarded-Port`，但即使缺少这些头也不影响浏览器登录及 HTTPS Cookie。
 
 HTTPS 在 Nginx 这一层终止时，可使用以下配置（上游端口按实际修改）：
 

@@ -7,7 +7,7 @@ Docker 容器监控与镜像更新工具，支持卡片/列表、浅色/暗色�
 ## 安装
 
 
-镜像：[weidaye1122/docker_monitor](https://hub.docker.com/r/weidaye1122/docker_monitor)。支持 `linux/amd64`（常见 x86 群晖、PC）和 `linux/arm64`（ARM64 主机）。`latest` 跟随最新正式版本，固定版本可使用 `1.0.1`。版本改动见 [更新日志](https://github.com/weidaye1122/DockerMonitor/blob/main/CHANGELOG.md)。
+镜像：[weidaye1122/docker_monitor](https://hub.docker.com/r/weidaye1122/docker_monitor)。支持 `linux/amd64`（常见 x86 群晖、PC）和 `linux/arm64`（ARM64 主机）。`latest` 跟随最新正式版本，固定版本可使用 `1.0.2`。版本改动见 [更新日志](https://github.com/weidaye1122/DockerMonitor/blob/main/CHANGELOG.md)。
 
 ### Compose 安装（推荐）
 
@@ -51,7 +51,7 @@ docker compose pull
 docker compose up -d
 ```
 
-固定版本安装将镜像改为 `weidaye1122/docker_monitor:1.0.1`。仅允许本机访问时，将端口改为 `"127.0.0.1:9090:8080"`。
+固定版本安装将镜像改为 `weidaye1122/docker_monitor:1.0.2`。仅允许本机访问时，将端口改为 `"127.0.0.1:9090:8080"`。
 
 
 ## 使用说明
@@ -67,14 +67,10 @@ docker compose up -d
 
 ## 反向代理与穿透隧道
 
-HTTPS 反代应保留外部 Host（包含端口）并设置 `X-Forwarded-Proto`。改写 Host 时可用 `X-Forwarded-Host`，单独传递端口可用 `X-Forwarded-Port`。Lucky、Nginx/NPM、群晖反代和穿透隧道均可使用这些标准头。
+通过 Lucky、Nginx/NPM、群晖反代和穿透隧道访问，无需配置外部域名即可登录。支持 HTTPS、非标准端口、IPv6、改写 Host 和丢失代理头的隧道，同时保留局域网 HTTP 直连。旧版的 `PUBLIC_URL` 可删除。
 
-隧道未传递完整代理头时，在 Compose 的 `environment` 添加固定外部地址，例如：
+页面自动获取并提交 Cookie、会话绑定的签名 CSRF Token，保护登录、退出和所有写操作。HTTPS 浏览器访问即使经过 HTTP 后端，也使用 Secure Cookie。令牌失效时仅重试明确未执行的请求一次；登录过期需重新登录。代理需转发整个站点，并保留 Cookie 和自定义请求头。
 
-```yaml
-      PUBLIC_URL: "https://dm.543221.xyz:6"
-```
+`TRUSTED_PROXY_IPS` 是可选配置，仅用于识别可信代理头和真实客户端 IP，以区分登录限流。默认只信任回环地址；没有可信客户端地址时按代理连接地址共享限流。当前支持域名根路径部署，不支持 `/docker-monitor/` 等子路径。
 
-重新创建容器后生效；局域网直连仍可使用。默认只信任回环代理，可用 `TRUSTED_PROXY_IPS` 指定实际代理 IP 或 CIDR，多个值用逗号分隔。Docker/NAS 和公网代理需要明确加入可信列表，或仅用 `PUBLIC_URL` 指定固定外部地址。代理应覆盖客户端自带的代理头，转发整个站点，并保留 Origin、Cookie 和 `X-Monitor-Request`。后端端口应只供代理或信任的使用者访问。
-
-当前支持域名根路径部署，不支持 `/docker-monitor/` 等子路径。完整配置见 [反代与隧道说明](https://github.com/weidaye1122/DockerMonitor#https-反代与穿透隧道)。
+完整配置见 [反代与隧道说明](https://github.com/weidaye1122/DockerMonitor#https-反代与穿透隧道)。

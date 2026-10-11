@@ -1,3 +1,4 @@
+from tests.http_helpers import csrf_headers
 import json
 from types import SimpleNamespace
 
@@ -108,8 +109,9 @@ def test_notification_api_auth_persistence_and_test_with_mock_transport(notifier
     monkeypatch.setenv('ADMIN_USERNAME','owner')
     client=TestClient(create_app(SimpleNamespace(notifications=notifier)))
     assert client.get('/api/notifications').status_code==401
-    headers={'X-Monitor-Request':'1'}
+    headers=csrf_headers(client)
     assert client.post('/api/auth/login',json={'username':'owner','password':'local-test-only'},headers=headers).status_code==200
+    headers=csrf_headers(client)
     assert client.put('/api/notifications',json=CONFIG,headers=headers).status_code==200
     assert 'abcdefgh1234' not in client.get('/api/notifications').text
     response=client.post('/api/notifications/test',json={**CONFIG,'endpoint':''},headers=headers)

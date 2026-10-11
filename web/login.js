@@ -14,7 +14,7 @@
     event.preventDefault();const button=form.querySelector('[type=submit]');if(button.disabled)return;
     button.disabled=true;button.querySelector('span').textContent='登录中…';error.hidden=true;
     try{
-      const response=await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json','X-Monitor-Request':'1'},body:JSON.stringify({username:form.elements.username.value,password:password.value}),signal:AbortSignal.timeout(15000)});
+      const response=await monitorFetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:form.elements.username.value,password:password.value}),signal:AbortSignal.timeout(15000)});
       const result=await response.json();if(!response.ok){error.textContent=result.detail||'登录失败，请重试';error.hidden=false;password.focus();password.select();return;}
       password.value='';window.location.replace('/');
     }catch{error.textContent='连接失败，请检查网络后重试';error.hidden=false;}

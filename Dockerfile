@@ -11,7 +11,7 @@ COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 COPY backend ./backend
 COPY web/index.html web/app.css web/app.js ./web/
-COPY web/login.html web/login.css web/login.js ./web/
+COPY web/login.html web/login.css web/login.js web/request.js ./web/
 COPY web/vendor ./web/vendor
 COPY web/icons ./web/icons
 COPY web/favicon.ico web/manifest.webmanifest ./web/

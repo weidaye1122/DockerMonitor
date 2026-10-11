@@ -17,6 +17,10 @@ def main():
     BASE = os.environ.get("MONITOR_TEST_URL", "http://127.0.0.1:9090")
     client = docker.from_env(timeout=120)
     http = httpx.Client(base_url=BASE, timeout=120, headers={"X-Monitor-Request": "1"}, trust_env=False)
+    # Acquire the same cookie-bound token as the browser before any operation.
+    csrf = http.get('/api/auth/csrf', headers={'X-Monitor-Client-Scheme': httpx.URL(BASE).scheme})
+    csrf.raise_for_status()
+    http.headers['X-CSRF-Token'] = csrf.json()['token']
     marker = uuid.uuid4().hex[:10]
     labels = {"docker-monitor.test-run": marker}
     name = "docker-monitor-test-" + marker

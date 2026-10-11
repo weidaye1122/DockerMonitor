@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 
 from backend.app import create_app
 from backend.auth import COOKIE
+from tests.http_helpers import csrf_headers
 
 HEADERS = {"X-Monitor-Request": "1"}
 
@@ -18,6 +19,8 @@ def client(monkeypatch):
 
 
 def sign_in(client, username="owner", password="测试-password", headers=HEADERS):
+    if headers is HEADERS:
+        headers = csrf_headers(client)
     return client.post("/api/auth/login", json={"username": username, "password": password}, headers=headers)
 
 
@@ -47,7 +50,7 @@ def test_configured_account_login_cookie_and_logout_revocation(client):
     assert client.get("/api/snapshot").status_code == 200
     assert client.get("/api/auth/session").json()["username"] == "owner"
     assert client.get("/login", follow_redirects=False).status_code == 303
-    assert client.post("/api/auth/logout", headers=HEADERS).status_code == 200
+    assert client.post("/api/auth/logout", headers=csrf_headers(client)).status_code == 200
     assert not client.cookies.get(COOKIE)
     # Even replaying the old cookie cannot restore a logged-out session.
     client.cookies.set(COOKIE, token)

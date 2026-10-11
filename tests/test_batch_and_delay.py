@@ -1,3 +1,4 @@
+from tests.http_helpers import csrf_headers
 import threading
 from types import SimpleNamespace
 
@@ -38,7 +39,7 @@ def test_delay_api_rejects_units_and_excessive_hours(tmp_path, monkeypatch):
     service = Service(Store(tmp_path/'db.sqlite3'))
     service.start = lambda:None
     client = TestClient(create_app(service))
-    headers = {'X-Monitor-Request':'1'}
+    headers = csrf_headers(client)
     body = {**service.store.policy(), 'updateMode':'delay', 'waitValue':30, 'waitUnit':'minutes'}
     try:
         assert client.put('/api/policy', json=body, headers=headers).json()['waitUnit'] == 'minutes'
@@ -103,6 +104,6 @@ def test_icon_and_manifest_assets_are_public_but_api_requires_login(tmp_path,mon
         manifest = client.get('/manifest.webmanifest').json()
         assert manifest['name'] == 'Docker Monitor'
         assert client.get('/api/policy').status_code == 401
-        assert client.post('/api/update-all',json={'ids':['a'*64]},headers={'X-Monitor-Request':'1'}).status_code == 401
+        assert client.post('/api/update-all',json={'ids':['a'*64]},headers=csrf_headers(client)).status_code == 401
     finally:
         service.close()

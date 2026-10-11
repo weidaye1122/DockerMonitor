@@ -1,4 +1,6 @@
 import os
+import secrets
+import re
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -12,9 +14,9 @@ from typing import Literal, List, Optional
 from .engine import OperationError
 from .service import Service
 from .store import Store
-from .auth import Auth, COOKIE, SESSION_SECONDS
+from .auth import Auth, COOKIE, CSRF_COOKIE, SESSION_SECONDS
 from .icons import install_routes
-from .proxy import ReverseProxyMiddleware, parse_origin
+from .proxy import ReverseProxyMiddleware
 
 
 class Policy(BaseModel):
@@ -66,29 +68,24 @@ def create_app(service=None):
     auth = Auth(os.environ.get("ADMIN_PASSWORD", ""), os.environ.get("ADMIN_USERNAME", "admin") or "admin")
     app.state.auth = auth
     web = Path(__file__).resolve().parent.parent / "web"
-    public_url = os.environ.get("PUBLIC_URL", "").strip()
-    public_origin = parse_origin(public_url)
-    if public_url and public_origin is None:
-        raise ValueError("PUBLIC_URL 必须是 HTTP/HTTPS 根地址，可包含端口，不能包含子路径、查询或用户信息")
-
     def secure_cookie(request):
-        # Tunnels may discard every proxy header. A configured HTTPS origin
-        # still requires a Secure cookie for browser login/logout requests.
-        return request.url.scheme == "https" or (public_origin is not None
-            and public_origin[0] == "https" and parse_origin(request.headers.get("origin")) == public_origin)
+        # The signed CSRF token records the browser's HTTPS transport even if
+        # a tunnel discarded all proxy headers. It conveys no identity/trust.
+        token = request.headers.get("x-csrf-token", "")
+        parts = token.split(":")
+        return request.url.scheme == "https" or (len(parts) == 5 and parts[2] == "1")
 
     @app.middleware("http")
     async def guard(request: Request, call_next):
-        public = request.url.path in {"/healthz", "/favicon.ico", "/manifest.webmanifest", "/login", "/login.js", "/login.css", "/app.css", "/vendor/lucide.js", "/api/auth/login", "/api/auth/session"} or request.url.path.startswith("/icons/")
+        public = request.url.path in {"/healthz", "/favicon.ico", "/manifest.webmanifest", "/login", "/login.js", "/request.js", "/login.css", "/app.css", "/vendor/lucide.js", "/api/auth/login", "/api/auth/session", "/api/auth/csrf"} or request.url.path.startswith("/icons/")
         rejection = None
         if not public and not auth.authenticated(request.cookies.get(COOKIE)):
             rejection = JSONResponse({"detail": "登录已过期，请重新登录"}, 401) if request.url.path.startswith("/api/") else RedirectResponse("/login", status_code=303)
         if request.method not in ("GET", "HEAD", "OPTIONS"):
-            origin = request.headers.get("origin")
-            actual_origin = parse_origin(origin)
-            request_origin = parse_origin(request.url.scheme + "://" + request.url.netloc)
-            if origin is not None and (actual_origin is None or actual_origin not in (request_origin, public_origin)):
-                rejection = JSONResponse({"detail": "请求来源不匹配"}, 403)
+            if request.headers.get("sec-fetch-site") == "cross-site":
+                rejection = JSONResponse({"detail": "不允许跨站操作"}, 403)
+            elif rejection is None and not auth.csrf_valid(request.headers.get("x-csrf-token"), request.cookies.get(CSRF_COOKIE), request.cookies.get(COOKIE)):
+                rejection = JSONResponse({"detail": "页面验证已失效，请重试", "code": "csrf_invalid"}, 403)
             if request.headers.get("x-monitor-request") != "1":
                 rejection = JSONResponse({"detail": "缺少操作请求标识"}, 403)
         response = rejection if rejection is not None else await call_next(request)
@@ -96,7 +93,7 @@ def create_app(service=None):
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "no-referrer"
         response.headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
-        if request.url.path.startswith("/api") or request.url.path in {"/", "/index.html", "/login"}:
+        if request.url.path.startswith("/api") or request.url.path in {"/", "/index.html", "/login", "/app.js", "/login.js", "/request.js"}:
             response.headers["Cache-Control"] = "no-store"
         return response
 
@@ -126,6 +123,18 @@ def create_app(service=None):
     def session(request: Request):
         authenticated = auth.authenticated(request.cookies.get(COOKIE))
         return {"enabled": auth.enabled, "authenticated": authenticated, "username": auth.username if authenticated and auth.enabled else None}
+
+    @app.get("/api/auth/csrf")
+    def csrf(request: Request):
+        if request.headers.get("x-monitor-request") != "1" or request.headers.get("sec-fetch-site") == "cross-site":
+            return JSONResponse({"detail": "不允许跨站获取页面验证"}, 403)
+        nonce = request.cookies.get(CSRF_COOKIE, "")
+        if not re.fullmatch(r"[A-Za-z0-9_-]{43}", nonce):
+            nonce = secrets.token_urlsafe(32)
+        secure = request.url.scheme == "https" or request.headers.get("x-monitor-client-scheme") == "https"
+        response = JSONResponse({"token": auth.csrf_token(nonce, request.cookies.get(COOKIE), secure)})
+        response.set_cookie(CSRF_COOKIE, nonce, max_age=SESSION_SECONDS, httponly=True, secure=secure, samesite="strict", path="/")
+        return response
 
     @app.post("/api/auth/login")
     def login(credentials: Login, request: Request):

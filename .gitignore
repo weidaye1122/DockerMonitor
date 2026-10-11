@@ -4,3 +4,5 @@ __pycache__/
 .venv/
 output/
 data/
+
+.playwright-cli/

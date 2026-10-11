@@ -32,7 +32,7 @@
     for(const [app,m] of models)try{localStorage.setItem('docker-monitor-ui',JSON.stringify({view:app.dataset.layout,theme:m.theme,filter:m.filter,search:m.search}));}catch{}
   };
   const api=async(path,options={})=>{
-    const response=await fetch(path,{...options,headers:{'Content-Type':'application/json','X-Monitor-Request':'1',...options.headers},signal:AbortSignal.timeout(120000)});
+    const response=await monitorFetch(path,{...options,headers:{'Content-Type':'application/json',...options.headers},signal:AbortSignal.timeout(120000)});
     if(response.status===401){window.location.replace('/login');throw new Error('登录已过期，请重新登录');}
     const result=await response.json();if(!response.ok)throw new Error(typeof result.detail==='string'?result.detail:'请求参数无效');return result;
   };

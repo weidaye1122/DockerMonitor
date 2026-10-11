@@ -5,7 +5,8 @@ from urllib.parse import urlsplit
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 
-# Docker/NAS proxies must be explicitly trusted, or use a fixed PUBLIC_URL.
+# Proxy address/client-IP restoration requires explicit trust. Browser CSRF
+# validation works without proxy trust or any configured public address.
 # Private addresses alone cannot distinguish proxies from ordinary LAN clients.
 DEFAULT_TRUSTED_PROXIES = "127.0.0.1,::1"
 

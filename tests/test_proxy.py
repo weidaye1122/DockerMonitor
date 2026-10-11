@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 from backend.app import create_app
 from backend.auth import COOKIE
 from backend.proxy import parse_origin
+from tests.http_helpers import csrf_headers
 
 HEADERS = {"X-Monitor-Request": "1"}
 
@@ -40,7 +41,7 @@ def make_client(monkeypatch):
 
 def login(client, origin, headers=None, password="test"):
     return client.post("/api/auth/login", json={"username": "admin", "password": password},
-                       headers={**HEADERS, "Origin": origin, **(headers or {})})
+                       headers={**csrf_headers(client), "Origin": origin, **(headers or {})})
 
 
 @pytest.mark.parametrize("url,peer,proxy_headers", [
@@ -72,10 +73,10 @@ def test_proxy_browser_login_assets_session_and_logout(make_client, url, peer, p
     assert client.get("/app.js").status_code == 200
     assert client.get("/vendor/croner.js").status_code == 200
     policy = {"checkCron": "0 * * * *", "updateMode": "scheduled"}
-    assert client.put("/api/policy", json=policy, headers={**HEADERS, "Origin": url}).status_code == 200
-    assert client.put("/api/policy", json=policy, headers={**HEADERS, "Origin": "https://evil.example"}).status_code == 403
+    assert client.put("/api/policy", json=policy, headers={**csrf_headers(client), "Origin": url}).status_code == 200
+    assert client.put("/api/policy", json=policy, headers={**csrf_headers(client), "Sec-Fetch-Site": "cross-site"}).status_code == 403
     # Logout exercises the same origin guard as all other mutating APIs.
-    response = client.post("/api/auth/logout", headers={**HEADERS, "Origin": url})
+    response = client.post("/api/auth/logout", headers={**csrf_headers(client), "Origin": url})
     assert response.status_code == 200
     assert ("secure" in response.headers["set-cookie"].lower()) == url.startswith("https:")
     assert not client.cookies.get(COOKIE)
@@ -94,10 +95,14 @@ def test_ipv6_proxy_origin_and_session(make_client):
                 "Origin": "https://[2001:db8::1]:8443", "Host": "localhost:8080",
                 "X-Forwarded-Host": "[2001:db8::1]", "X-Forwarded-Port": "8443",
                 "X-Forwarded-Proto": "https"}) as client:
+            csrf = await client.get("/api/auth/csrf", headers={"X-Monitor-Client-Scheme": "https"})
+            client.headers["X-CSRF-Token"] = csrf.json()["token"]
             response = await client.post("/api/auth/login", json={"username": "admin", "password": "test"})
             assert response.status_code == 200
             assert "secure" in response.headers["set-cookie"].lower()
             assert (await client.get("/api/snapshot")).status_code == 200
+            csrf = await client.get("/api/auth/csrf", headers={"X-Monitor-Client-Scheme": "https"})
+            client.headers["X-CSRF-Token"] = csrf.json()["token"]
             assert (await client.post("/api/auth/logout")).status_code == 200
             assert (await client.get("/api/snapshot")).status_code == 401
     asyncio.run(check())
@@ -105,17 +110,17 @@ def test_ipv6_proxy_origin_and_session(make_client):
 
 @pytest.mark.parametrize("origin", ["https://evil.example", "http://dm.543221.xyz:6", "https://dm.543221.xyz",
     "https://dm.543221.xyz:7", "null", "https://dm.543221.xyz:6/path", "https://user@dm.543221.xyz:6"])
-def test_proxy_still_rejects_other_origins(make_client, origin):
+def test_proxy_rejects_cross_site_even_with_a_valid_token(make_client, origin):
     client = make_client(headers={"X-Forwarded-Proto": "https"})
-    response = login(client, origin)
-    assert response.status_code == 403 and response.json()["detail"] == "请求来源不匹配"
+    response = login(client, origin, {"Sec-Fetch-Site": "cross-site"})
+    assert response.status_code == 403 and response.json()["detail"] == "不允许跨站操作"
     assert not client.app.app.state.auth.sessions
 
 
 def test_public_client_cannot_spoof_proxy_headers(make_client):
     client = make_client("http://monitor.example.com", "203.0.113.10", {
         "X-Forwarded-Proto": "https", "X-Forwarded-Host": "evil.example", "X-Forwarded-Port": "443"})
-    assert login(client, "https://evil.example").status_code == 403
+    assert login(client, "https://evil.example", {"Sec-Fetch-Site": "cross-site"}).status_code == 403
     response = login(client, "http://monitor.example.com")
     assert response.status_code == 200
     assert "secure" not in response.headers["set-cookie"].lower()
@@ -138,15 +143,15 @@ def test_proxy_does_not_bypass_operation_marker(make_client):
 def test_proxy_trust_can_be_restricted(make_client, monkeypatch):
     monkeypatch.setenv("TRUSTED_PROXY_IPS", "192.168.1.20")
     client = make_client(headers={"X-Forwarded-Proto": "https"})
-    assert login(client, "https://dm.543221.xyz:6").status_code == 403
+    assert login(client, "https://dm.543221.xyz:6").status_code == 200
     client = make_client(peer="192.168.1.20", headers={"X-Forwarded-Proto": "https"})
     assert login(client, "https://dm.543221.xyz:6").status_code == 200
 
 
-def test_private_peer_is_not_trusted_by_default(make_client, monkeypatch):
+def test_untrusted_proxy_still_allows_cookie_bound_browser_login(make_client, monkeypatch):
     monkeypatch.delenv("TRUSTED_PROXY_IPS", raising=False)
     client = make_client(headers={"X-Forwarded-Proto": "https"})
-    assert login(client, "https://dm.543221.xyz:6").status_code == 403
+    assert login(client, "https://dm.543221.xyz:6").status_code == 200
 
 
 def test_trusted_proxy_client_ips_have_independent_login_limits(make_client):
@@ -157,17 +162,17 @@ def test_trusted_proxy_client_ips_have_independent_login_limits(make_client):
     assert login(client, "https://dm.543221.xyz:6", {"X-Forwarded-For": "203.0.113.12"}).status_code == 200
 
 
-def test_tunnel_without_proxy_headers_uses_explicit_public_url(make_client, monkeypatch):
+def test_tunnel_without_any_config_or_proxy_headers(make_client, monkeypatch):
     monkeypatch.delenv("TRUSTED_PROXY_IPS", raising=False)
-    monkeypatch.setenv("PUBLIC_URL", "https://dm.543221.xyz:6/")
+    monkeypatch.delenv("PUBLIC_URL", raising=False)
     client = make_client(peer="203.0.113.10", headers={"Host": "localhost:8080"})
     response = login(client, "https://dm.543221.xyz:6")
     assert response.status_code == 200
     assert "secure" in response.headers["set-cookie"].lower()
     assert client.get("/api/snapshot").status_code == 200
-    assert login(client, "https://evil.example").status_code == 403
-    assert login(client, "https://dm.543221.xyz").status_code == 403
-    response = client.post("/api/auth/logout", headers={**HEADERS, "Origin": "https://dm.543221.xyz:6"})
+    assert login(client, "https://evil.example", {"Sec-Fetch-Site": "cross-site"}).status_code == 403
+    assert login(client, "https://dm.543221.xyz").status_code == 200
+    response = client.post("/api/auth/logout", headers={**csrf_headers(client), "Origin": "https://dm.543221.xyz:6"})
     assert response.status_code == 200 and "secure" in response.headers["set-cookie"].lower()
     assert not client.cookies.get(COOKIE)
     # Configuring the public address does not force HTTPS cookies on LAN HTTP.
@@ -187,14 +192,14 @@ def test_default_ports_and_case_are_equivalent(make_client):
     ("X-Forwarded-Port", "99999"), ("X-Forwarded-Port", "bad"), ("X-Forwarded-Port", "9" * 5000), ("X-Forwarded-Proto", "javascript")])
 def test_malformed_proxy_headers_do_not_crash_or_allow_other_origin(make_client, header, value):
     client = make_client(headers={"Host": "localhost:8080", header: value})
-    assert login(client, "https://evil.example").status_code == 403
+    assert login(client, "https://evil.example", {"Sec-Fetch-Site": "cross-site"}).status_code == 403
 
 
 @pytest.mark.parametrize("value", ["https://monitor.example.com/path", "https://user@monitor.example.com", "https://monitor.example.com:bad"])
-def test_invalid_public_url_fails_at_startup(make_client, monkeypatch, value):
+def test_legacy_public_url_no_longer_controls_login(make_client, monkeypatch, value):
     monkeypatch.setenv("PUBLIC_URL", value)
-    with pytest.raises(ValueError, match="PUBLIC_URL"):
-        make_client()
+    client = make_client(headers={"Host": "localhost:8080"})
+    assert login(client, "https://dm.543221.xyz:6").status_code == 200
 
 
 @pytest.mark.parametrize("value", ["null", "https://x:99999", "https://x:0", "https://x/p", "https://x?y", "https://x#y", "https://x\\evil", "https://x\n"])
