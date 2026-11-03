@@ -6,7 +6,6 @@ Docker 容器监控与镜像更新工具，支持卡片/列表、浅色/暗色�
 
 ## 安装
 
-
 镜像：[weidaye1122/docker_monitor](https://hub.docker.com/r/weidaye1122/docker_monitor)。支持 `linux/amd64`（常见 x86 群晖、PC）和 `linux/arm64`（ARM64 主机）。`latest` 跟随最新正式版本，固定版本可使用 `1.0.2`。版本改动见 [更新日志](https://github.com/weidaye1122/DockerMonitor/blob/main/CHANGELOG.md)。
 
 ### Compose 安装（推荐）
@@ -44,15 +43,34 @@ docker compose logs --tail=50
 
 打开 `http://主机IP:9090`，使用配置的账号密码登录。群晖可在 Container Manager 中创建项目并粘贴以上 YAML；建议项目目录为 `/volume1/docker/DockerMonitor`。若 9090 已占用，可改为 `"19090:8080"` 并访问 19090 端口。`./data` 保存策略、任务及通知配置，升级时保留该目录。Docker socket 挂载让程序能够管理主机容器，请只向信任的网络和使用者开放。
 
-升级时在原目录执行：
+升级前先按 [数据与备份说明](https://github.com/weidaye1122/DockerMonitor#数据与备份) 核对实际挂载、完成备份，并保留旧镜像。在原部署目录、原 Compose 项目中执行：
 
 ```sh
-docker compose pull
-docker compose up -d
+docker compose pull docker-monitor
+docker compose up -d --no-deps docker-monitor
 ```
 
 固定版本安装将镜像改为 `weidaye1122/docker_monitor:1.0.2`。仅允许本机访问时，将端口改为 `"127.0.0.1:9090:8080"`。
 
+### Docker run 安装
+
+也可直接拉取镜像运行，将账号密码换成自己的值：
+
+```sh
+mkdir -p /opt/docker-monitor/data
+docker pull weidaye1122/docker_monitor:latest
+docker run -d --name docker-monitor --restart unless-stopped \
+  --label docker-monitor.protected=true \
+  -p 9090:8080 \
+  -e TZ=Asia/Shanghai \
+  -e ADMIN_USERNAME=admin \
+  -e ADMIN_PASSWORD='请替换为自己的强密码' \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v /opt/docker-monitor/data:/data \
+  weidaye1122/docker_monitor:latest
+docker logs --tail=50 docker-monitor
+curl -fsS http://127.0.0.1:9090/healthz
+```
 
 ## 使用说明
 
@@ -67,10 +85,95 @@ docker compose up -d
 
 ## 反向代理与穿透隧道
 
-通过 Lucky、Nginx/NPM、群晖反代和穿透隧道访问，无需配置外部域名即可登录。支持 HTTPS、非标准端口、IPv6、改写 Host 和丢失代理头的隧道，同时保留局域网 HTTP 直连。旧版的 `PUBLIC_URL` 可删除。
+通过 Lucky、Nginx/Nginx Proxy Manager、群晖反向代理，以及 FRP、Cloudflare Tunnel 等隧道访问时，无需填写 `PUBLIC_URL` 或可信代理地址才能登录。页面自动获取 Cookie 和会话绑定的签名 CSRF Token，登录、退出和所有写操作均提交令牌；不再将浏览器外部地址与后端 HTTP 地址比较。支持 HTTPS、非标准端口、IPv6、改写 Host 以及丢失代理头的隧道，局域网 HTTP 直连仍可使用。旧版添加的 `PUBLIC_URL` 可删除，保留也不影响登录。
 
-页面自动获取并提交 Cookie、会话绑定的签名 CSRF Token，保护登录、退出和所有写操作。HTTPS 浏览器访问即使经过 HTTP 后端，也使用 Secure Cookie。令牌失效时仅重试明确未执行的请求一次；登录过期需重新登录。代理需转发整个站点，并保留 Cookie 和自定义请求头。
+浏览器自动传递实际 HTTP/HTTPS 协议信息，仅用于 Cookie 的 Secure 标记，不作为请求授权。HTTPS 外部访问即使经过 HTTP 后端，也会使用 Secure、HttpOnly、SameSite=Strict Cookie。CSRF Token 不缓存，并绑定当前会话；令牌过期或服务重启后，页面只对明确被 CSRF 校验拒绝、尚未执行的操作刷新令牌并重试一次。登录过期仍需重新登录。
 
-`TRUSTED_PROXY_IPS` 是可选配置，仅用于识别可信代理头和真实客户端 IP，以区分登录限流。默认只信任回环地址；没有可信客户端地址时按代理连接地址共享限流。当前支持域名根路径部署，不支持 `/docker-monitor/` 等子路径。
+代理和隧道需转发整个站点（包括 `/api/` 和静态资源），保留 Cookie 和页面提交的自定义请求头。无需配置 CORS 或放开跨站访问。当前浏览器通过 `Sec-Fetch-Site` 拦截明确跨站操作，较旧浏览器仍由签名 CSRF Token、自定义请求头和浏览器同源读取限制保护。
 
-完整配置见 [反代与隧道说明](https://github.com/weidaye1122/DockerMonitor#https-反代与穿透隧道)。
+`TRUSTED_PROXY_IPS` 仅用于可信代理提供的外部地址和真实客户端 IP 识别，不是登录前提。默认只信任回环地址；需要按外部客户端 IP 区分登录限流时，可添加后端实际看到的代理连接 IP，多个 IP 或 CIDR 用逗号分隔：
+
+```yaml
+      TRUSTED_PROXY_IPS: "127.0.0.1,::1,172.18.0.1"
+```
+
+可信代理应覆盖客户端自带的代理头；后端端口应仅供代理或信任的使用者访问。没有可信真实客户端地址时，登录限流仍按代理或隧道连接地址共享。代理可以传递 `X-Forwarded-Proto`、`X-Forwarded-Host` 和 `X-Forwarded-Port`，但即使缺少这些头也不影响浏览器登录及 HTTPS Cookie。
+
+HTTPS 在 Nginx 这一层终止时，可使用以下配置（上游端口按实际修改）：
+
+```nginx
+location / {
+    proxy_pass http://127.0.0.1:9090;
+    proxy_set_header Host $http_host;
+    proxy_set_header X-Forwarded-Host $http_host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+}
+```
+
+容器启动命令已设置 `--no-proxy-headers`，由应用统一解析代理头。自定义 Uvicorn 启动命令也应保留此参数，避免重复解析丢失原始代理 IP。当前部署在域名根路径，例如 `https://monitor.example.com/`；不支持直接挂到 `/docker-monitor/` 等子路径。静态资源、API、PWA 图标和通知默认地址均使用同源根路径。
+
+## 维护者发布
+
+这里约定以后的手动发布，不会自动执行。日常开发可直接提交 `main`，有隔离需要再建分支；不要求 PR、多人审核或 GitHub 自动镜像发布。仅整理文档不升版本。
+
+1. 先检查 Git 状态和差异，保留其他任务未提交的工作，只提交本次明确文件。正式构建必须来自干净、已提交的源码；需要发布时，把 CHANGELOG 的相应“未发布”条目整理为 `X.Y.Z — 日期`，保留无关待发布条目。确认本地、GitHub 的 `vX.Y.Z` 和 Docker Hub 的 `X.Y.Z` 尚未使用，不覆盖旧版本。
+2. 对同一提交做必要检查，先本地构建 `docker-monitor:local` 并在专用测试环境试用。未提交的开发构建用 `dev`，并记录未提交差异，不当作正式源码凭据。Docker 登录沿用本机配置，不把令牌放文档、命令参数或构建参数。
+3. 试用通过、准备发布时，给确切源码提交打 `vX.Y.Z` 标签，提交和推送沿用当次任务授权。CHANGELOG 版本、Git 标签、镜像固定标签保持一致；Dockerfile 的 `VERSION=X.Y.Z`、`REVISION=完整提交号` 写入已有 OCI 标签。当前已有 `v1.0.0`、`v1.0.1`、`v1.0.2`，不重打或移动这些标签。
+
+下面的 `1.0.3` **仅为下次版本示例，本次没有创建该版本**。发布前先核对已登录的仓库和可用的本地 buildx 构建器；不改变现用容器或部署设置。以下变量在同一 shell 中使用：
+
+```sh
+release_version=1.0.3
+image_repo=weidaye1122/docker_monitor
+source_revision="$(git rev-parse HEAD)"
+release_dir="output/releases/$release_version"
+mkdir -p "$release_dir"
+git rev-parse HEAD > "$release_dir/revision.txt"
+
+# 本地试用；实际运行仍使用隔离测试环境。
+docker build --build-arg VERSION="$release_version" \
+  --build-arg REVISION="$source_revision" \
+  -t docker-monitor:local .
+```
+
+试用通过后才执行固定版本发布；**此步不带 `latest` 标签**：
+
+```sh
+docker buildx build --platform linux/amd64,linux/arm64 \
+  --build-arg VERSION="$release_version" \
+  --build-arg REVISION="$source_revision" \
+  --metadata-file "$release_dir/build.json" \
+  -t "$image_repo:$release_version" --push .
+docker buildx imagetools inspect "$image_repo:$release_version"
+docker buildx imagetools inspect --raw "$image_repo:$release_version" > "$release_dir/manifest.json"
+```
+
+实际发布要核对清单同时有 `linux/amd64` 和 `linux/arm64`，逐平台确认 OCI 版本/提交、启动与 `/healthz`、登录及相关改动。构建证明可能额外显示 `unknown/unknown`，不能替代任一运行架构。仿真与实机试用分别记录；只有构建成功不能写成双架构运行验证通过。涉及更新、数据保留或回退时增加对应的隔离测试。某平台失败就不更新 `latest`，修复后使用新固定版本，不重推覆盖已有固定标签。
+
+固定版本验证可用后，取本次构建记录中的摘要，让 `latest` 指向**同一份已验证产物**，不重新构建：
+
+```sh
+release_digest="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["containerimage.digest"])' "$release_dir/build.json")"
+docker buildx imagetools create -t "$image_repo:latest" "$image_repo@$release_digest"
+docker buildx imagetools inspect "$image_repo:latest"
+```
+
+最后核对 `latest` 与固定版本的顶层摘要及两种平台一致，保留构建记录、源码提交号、固定标签、摘要、实际检查和未验证项在 `output/releases/版本/`，交付时说明。CHANGELOG 按版本记录用户可见变化；源码标签和 OCI 标签把版本对应到确切代码。保留旧固定版本作为回退，不在清理中删除。
+
+镜像发布到此结束。更新本机、服务器或群晖是另一项操作，要按 [README 的备份、更新和恢复方法](https://github.com/weidaye1122/DockerMonitor#数据与备份) 核对原项目、挂载和回退版本，不随发布自动重建容器。
+
+## 真实 Docker 验证
+
+日常 UI 用 `tools.preview:app` 的内存模拟；代码基本测试用 pytest。只有涉及真实容器更新、配置/数据保留或恢复时才运行 `tools/integration_test.py`，不因小文档修改重复部署。
+
+现有脚本的边界必须先核对：
+
+- 默认服务 URL 是 `http://127.0.0.1:9090`，可用 `MONITOR_TEST_URL` 指定，但脚本会读写目标服务的全局策略，并按固定名称查找 `docker-monitor` 测试自身保护。不能将它指向现用服务，也不能拿现有同名容器验证保护。
+- 只在专门创建的测试 Docker 引擎、全新数据和专门启动的测试服务上执行；测试服务内部可沿用脚本要求的名称和端口，不修改现有部署。客户端和测试服务必须指向同一个测试引擎，测试端口 5001、5002 不得与现用服务冲突。
+- Docker SDK 从 `DOCKER_HOST` 等环境变量取连接，不自动跟随 Docker CLI 的当前 context。只切换 CLI context 不能证明脚本隔离，必须核对双方实际连接和服务的数据挂载。
+- 脚本创建 `docker-monitor.test-run=<本次标记>` 标签的临时容器、网络和匿名卷，覆盖启停重启、同标签更新、配置和数据保留、健康失败回退、延迟及 Cron 更新。测试只触碰这些专门创建的资源；保留原有保护、配置保留与失败回退行为。
+- 报告写入 `output/integration/results.json`，下次运行会覆盖，需保存的证据先另存到 `output/tests/本次标记/`。
+- `finally` 先恢复策略再清理；如果恢复请求失败，后续清理可能没有执行。测试后按本次标签、精确 ID、挂载及引用逐项核对。脚本不删除测试镜像和构建缓存，另按 README 的清理规则处理，不能用全局清理补救，也不删预先存在的基础镜像。
+
+没有可确认的专用测试环境时跳过真实测试，并明确说明未验证范围。旧的 NAS 和集成验证证据见 [使用细节与历史部署记录](https://github.com/weidaye1122/DockerMonitor/blob/main/docs/operations.md)，不作为当前版本的验收结果。

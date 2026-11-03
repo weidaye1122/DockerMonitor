@@ -1,8 +1,44 @@
-__pycache__/
-*.pyc
+# 本机配置与凭据；示例只放占位值。
 .env
-.venv/
-output/
-data/
+.env.*
+!.env.example
+.docker/
+secrets/
+*.pem
+*.key
 
+# 运行数据、备份与本机产物，不能作为源码提交。
+/data/
+/backups/
+/output/
+/logs/
+/cache/
+/archives/
+*.sqlite
+*.sqlite3
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite3-wal
+*.sqlite3-shm
+*.db
+*.db-wal
+*.db-shm
+*.log
+*.bak
+*.dump
+*.tar
+*.tar.gz
+*.tar.zst
+*.tgz
+
+# 开发环境、缓存与浏览器测试产物。
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.cache/
+.coverage
+.coverage.*
+htmlcov/
 .playwright-cli/
+.DS_Store
