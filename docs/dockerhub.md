@@ -125,20 +125,30 @@ location / {
 2. 需要发布时，由 AI 核对 Git、CHANGELOG 和 Docker Hub 已有版本，负责选取未使用的新版本；默认递增修订号（如 `1.0.3` → `1.0.4`），用户另有指定时按要求处理。把 CHANGELOG 相应“未发布”条目整理为 `X.Y.Z — 日期`，同步文档中的当前版本引用，保留无关待发布条目，不覆盖已发布固定版本。
 3. 审查本次版本累积的待发布改动，连同版本说明一起提交，给确切提交打 `vX.Y.Z` 标签并推送 GitHub。保留无关或未完成的本地工作，必要时从发布提交建立干净工作目录构建。正式构建来自干净、已提交的源码；CHANGELOG 版本、Git 标签、镜像固定标签保持一致，Dockerfile 的 `VERSION=X.Y.Z`、`REVISION=完整提交号` 写入已有 OCI 标签。当前已有 `v1.0.0`、`v1.0.1`、`v1.0.2`、`v1.0.3`，不重打或移动这些标签。发布准备期间如果又改了功能代码，先完成相应本地检查。
 
-下面的 `1.0.4` **仅为下次版本示例，实际发布前仍需核对已有标签**。本地验证完成后，核对已登录的仓库和可用的本地 buildx 构建器；Docker 登录沿用本机配置，不把令牌放文档、命令参数或构建参数。发布不改变现用容器或部署设置。以下变量在同一 shell 中使用：
+下面的 `1.0.4` **仅为下次版本示例，实际发布前仍需核对已有标签**。本地验证完成后，核对已登录的仓库和可用的本地 buildx 构建器；Docker 登录沿用本机配置，不把令牌放文档、命令参数或构建参数。发布不改变现用容器或部署设置。
+
+每次执行必须使用全新的记录目录，已有路径（包括空目录）也先停止，保留原内容。首次记录直接放在版本目录；确需重试时，明确将 `release_dir` 改为该版本下新的 `attempt-日期时间` 子目录，不能复用旧目录。重试前先核对 Docker Hub 标签状态；固定版本已发布时停止重新推送，新的本地记录目录不能作为覆盖远端固定标签的理由。
+
+下面作为一个完整命令块执行：先创建全新目录，再用同一条命令构建 amd64、arm64，并同时推送新固定版本和 `latest`。任一步失败即退出此命令块，不继续后续构建或核对；两个标签使用同一份构建产物。
 
 ```sh
+(
+set -eu
+set -C
 release_version=1.0.4
 image_repo=weidaye1122/docker_monitor
 source_revision="$(git rev-parse HEAD)"
-release_dir="../本地资料/验证/发布/$release_version"
-mkdir -p "$release_dir"
-git rev-parse HEAD > "$release_dir/revision.txt"
-```
+release_root="../本地资料/验证/发布/$release_version"
+release_dir="$release_root"
+# 确需重试时，先核对远端标签，再启用下一行；同名尝试目录仍会被拒绝。
+# release_dir="$release_root/attempt-$(date +%Y%m%d-%H%M%S)"
+mkdir -p "$(dirname "$release_dir")"
+if ! mkdir "$release_dir"; then
+  printf '无法创建全新发布记录目录：%s；请保留已有路径，检查原因或改用新的尝试子目录。\n' "$release_dir" >&2
+  exit 1
+fi
+printf '%s\n' "$source_revision" > "$release_dir/revision.txt"
 
-同一条命令构建 amd64、arm64，并同时推送新固定版本和 `latest`，两个标签使用同一份构建产物：
-
-```sh
 docker buildx build --platform linux/amd64,linux/arm64 \
   --build-arg VERSION="$release_version" \
   --build-arg REVISION="$source_revision" \
@@ -147,11 +157,12 @@ docker buildx build --platform linux/amd64,linux/arm64 \
 docker buildx imagetools inspect "$image_repo:$release_version"
 docker buildx imagetools inspect "$image_repo:latest"
 docker buildx imagetools inspect --raw "$image_repo:$release_version" > "$release_dir/manifest.json"
+)
 ```
 
 上传后核对固定版本与 `latest` 的顶层摘要一致，清单同时有 `linux/amd64` 和 `linux/arm64`，构建记录中的源码版本/提交与本次发布相符。构建证明可能额外显示 `unknown/unknown`，不能替代任一运行架构。这是发布结果核对，功能验收已在本地完成，无需另等一轮验收再更新 `latest`。
 
-构建、发布的日志和元数据保留在 `../本地资料/验证/发布/版本号/`，包括源码提交号、固定标签、平台、摘要、实际本地检查和未验证项，交付时说明。
+构建、发布的日志和元数据保留在 `../本地资料/验证/发布/版本号/`，重试记录放该版本下新的尝试子目录，包括源码提交号、固定标签、平台、摘要、实际本地检查和未验证项，交付时说明。旧版本目录及已有尝试记录完整保留，不覆盖、清空或移动来绕过检查。
 
 实际产生离线镜像文件时再创建 `../本地资料/镜像归档/`，随镜像记录对应版本、平台、源码提交和摘要；无需每次构建或上传 Docker Hub 都导出镜像，不提前预留空的镜像归档目录。整理资料时完整保留有效内容并同步修正引用链接，确认无内容的多余空目录可以移除。
 
