@@ -129,7 +129,7 @@ location / {
 release_version=1.0.3
 image_repo=weidaye1122/docker_monitor
 source_revision="$(git rev-parse HEAD)"
-release_dir="output/releases/$release_version"
+release_dir="../本地资料/验证/发布/$release_version"
 mkdir -p "$release_dir"
 git rev-parse HEAD > "$release_dir/revision.txt"
 ```
@@ -149,7 +149,7 @@ docker buildx imagetools inspect --raw "$image_repo:$release_version" > "$releas
 
 上传后核对固定版本与 `latest` 的顶层摘要一致，清单同时有 `linux/amd64` 和 `linux/arm64`，构建记录中的源码版本/提交与本次发布相符。构建证明可能额外显示 `unknown/unknown`，不能替代任一运行架构。这是发布结果核对，功能验收已在本地完成，无需另等一轮验收再更新 `latest`。
 
-保留构建记录、源码提交号、固定标签、摘要、实际本地检查和未验证项在 `output/releases/版本/`，交付时说明。仿真与实机试用分别记录，构建成功不等于两种架构都已实机运行验证。构建或上传异常时如实记录标签状态，不宣称发布完成。CHANGELOG 按版本记录用户可见变化；源码标签和 OCI 标签把版本对应到确切代码。保留旧固定版本作为回退，不在清理中删除。
+保留构建记录、源码提交号、固定标签、摘要、实际本地检查和未验证项在 `../本地资料/验证/发布/版本/`，镜像归档放 `../本地资料/镜像归档/`，交付时说明。仿真与实机试用分别记录，构建成功不等于两种架构都已实机运行验证。构建或上传异常时如实记录标签状态，不宣称发布完成。CHANGELOG 按版本记录用户可见变化；源码标签和 OCI 标签把版本对应到确切代码。保留旧固定版本作为回退，不在清理中删除。
 
 镜像发布到此结束。更新本机、服务器或群晖是另一项操作，要按 [README 的备份、更新和恢复方法](https://github.com/weidaye1122/DockerMonitor#数据与备份) 核对原项目、挂载和回退版本，不随发布自动重建容器。
 
@@ -163,7 +163,7 @@ docker buildx imagetools inspect --raw "$image_repo:$release_version" > "$releas
 - 只在专门创建的测试 Docker 引擎、全新数据和专门启动的测试服务上执行；测试服务内部可沿用脚本要求的名称和端口，不修改现有部署。客户端和测试服务必须指向同一个测试引擎，测试端口 5001、5002 不得与现用服务冲突。
 - Docker SDK 从 `DOCKER_HOST` 等环境变量取连接，不自动跟随 Docker CLI 的当前 context。只切换 CLI context 不能证明脚本隔离，必须核对双方实际连接和服务的数据挂载。
 - 脚本创建 `docker-monitor.test-run=<本次标记>` 标签的临时容器、网络和匿名卷，覆盖启停重启、同标签更新、配置和数据保留、健康失败回退、延迟及 Cron 更新。测试只触碰这些专门创建的资源；保留原有保护、配置保留与失败回退行为。
-- 报告写入 `output/integration/results.json`，下次运行会覆盖，需保存的证据先另存到 `output/tests/本次标记/`。
+- 脚本继续将报告写入 `output/integration/results.json`，下次运行会覆盖；需保存的证据先另存到 `../本地资料/验证/日期-本次标记/`，不为目录对齐改写脚本输出。
 - `finally` 先恢复策略再清理；如果恢复请求失败，后续清理可能没有执行。测试后按本次标签、精确 ID、挂载及引用逐项核对。脚本不删除测试镜像和构建缓存，另按 README 的清理规则处理，不能用全局清理补救，也不删预先存在的基础镜像。
 
 没有可确认的专用测试环境时跳过真实测试，并明确说明未验证范围。旧的 NAS 和集成验证证据见 [使用细节与历史部署记录](https://github.com/weidaye1122/DockerMonitor/blob/main/docs/operations.md)，不作为当前版本的验收结果。

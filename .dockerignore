@@ -12,6 +12,7 @@ output
 logs
 cache
 archives
+本地资料
 *.sqlite
 *.sqlite3
 *.sqlite-wal
