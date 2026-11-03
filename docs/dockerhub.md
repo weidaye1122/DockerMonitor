@@ -117,11 +117,13 @@ location / {
 
 这里约定以后的手动发布，不会自动执行。日常开发可直接提交 `main`，有隔离需要再建分支；不要求 PR、多人审核或 GitHub 自动镜像发布。仅整理文档不升版本。
 
-1. 先检查 Git 状态和差异，保留其他任务未提交的工作，只提交本次明确文件。正式构建必须来自干净、已提交的源码；需要发布时，把 CHANGELOG 的相应“未发布”条目整理为 `X.Y.Z — 日期`，保留无关待发布条目。确认本地、GitHub 的 `vX.Y.Z` 和 Docker Hub 的 `X.Y.Z` 尚未使用，不覆盖旧版本。
-2. 对同一提交做必要检查，先本地构建 `docker-monitor:local` 并在专用测试环境试用。未提交的开发构建用 `dev`，并记录未提交差异，不当作正式源码凭据。Docker 登录沿用本机配置，不把令牌放文档、命令参数或构建参数。
-3. 试用通过、准备发布时，给确切源码提交打 `vX.Y.Z` 标签，提交和推送沿用当次任务授权。CHANGELOG 版本、Git 标签、镜像固定标签保持一致；Dockerfile 的 `VERSION=X.Y.Z`、`REVISION=完整提交号` 写入已有 OCI 标签。当前已有 `v1.0.0`、`v1.0.1`、`v1.0.2`，不重打或移动这些标签。
+默认流程：**本地验证完成 → AI 递增版本号、整理更新日志 → 一次构建并同时推送固定版本和 `latest`**。功能验证放在发布前的本地阶段，上传后核对发布结果即可。
 
-下面的 `1.0.3` **仅为下次版本示例，本次没有创建该版本**。发布前先核对已登录的仓库和可用的本地 buildx 构建器；不改变现用容器或部署设置。以下变量在同一 shell 中使用：
+1. 先检查 Git 状态和差异，保留其他任务未提交的工作，只提交本次明确文件。先本地构建 `docker-monitor:local`，按改动范围完成必要检查和隔离验证；涉及容器更新、数据保留或恢复时才增加对应测试。普通本地构建用 `dev`，记录未提交差异，不消耗正式版本号。
+2. 需要发布时，由 AI 核对 Git、CHANGELOG 和 Docker Hub 已有版本，负责选取未使用的新版本；默认递增修订号（如 `1.0.2` → `1.0.3`），用户另有指定时按要求处理。把 CHANGELOG 相应“未发布”条目整理为 `X.Y.Z — 日期`，同步文档中的当前版本引用，保留无关待发布条目，不覆盖已发布固定版本。
+3. 正式构建来自干净、已提交的源码，给确切提交打 `vX.Y.Z` 标签，提交和推送沿用当次任务授权。CHANGELOG 版本、Git 标签、镜像固定标签保持一致；Dockerfile 的 `VERSION=X.Y.Z`、`REVISION=完整提交号` 写入已有 OCI 标签。当前已有 `v1.0.0`、`v1.0.1`、`v1.0.2`，不重打或移动这些标签。发布准备期间如果又改了功能代码，先完成相应本地检查。
+
+下面的 `1.0.3` **仅为下次版本示例，本次没有创建该版本**。本地验证完成后，核对已登录的仓库和可用的本地 buildx 构建器；Docker 登录沿用本机配置，不把令牌放文档、命令参数或构建参数。发布不改变现用容器或部署设置。以下变量在同一 shell 中使用：
 
 ```sh
 release_version=1.0.3
@@ -130,36 +132,24 @@ source_revision="$(git rev-parse HEAD)"
 release_dir="output/releases/$release_version"
 mkdir -p "$release_dir"
 git rev-parse HEAD > "$release_dir/revision.txt"
-
-# 本地试用；实际运行仍使用隔离测试环境。
-docker build --build-arg VERSION="$release_version" \
-  --build-arg REVISION="$source_revision" \
-  -t docker-monitor:local .
 ```
 
-试用通过后才执行固定版本发布；**此步不带 `latest` 标签**：
+同一条命令构建 amd64、arm64，并同时推送新固定版本和 `latest`，两个标签使用同一份构建产物：
 
 ```sh
 docker buildx build --platform linux/amd64,linux/arm64 \
   --build-arg VERSION="$release_version" \
   --build-arg REVISION="$source_revision" \
   --metadata-file "$release_dir/build.json" \
-  -t "$image_repo:$release_version" --push .
+  -t "$image_repo:$release_version" -t "$image_repo:latest" --push .
 docker buildx imagetools inspect "$image_repo:$release_version"
+docker buildx imagetools inspect "$image_repo:latest"
 docker buildx imagetools inspect --raw "$image_repo:$release_version" > "$release_dir/manifest.json"
 ```
 
-实际发布要核对清单同时有 `linux/amd64` 和 `linux/arm64`，逐平台确认 OCI 版本/提交、启动与 `/healthz`、登录及相关改动。构建证明可能额外显示 `unknown/unknown`，不能替代任一运行架构。仿真与实机试用分别记录；只有构建成功不能写成双架构运行验证通过。涉及更新、数据保留或回退时增加对应的隔离测试。某平台失败就不更新 `latest`，修复后使用新固定版本，不重推覆盖已有固定标签。
+上传后核对固定版本与 `latest` 的顶层摘要一致，清单同时有 `linux/amd64` 和 `linux/arm64`，构建记录中的源码版本/提交与本次发布相符。构建证明可能额外显示 `unknown/unknown`，不能替代任一运行架构。这是发布结果核对，功能验收已在本地完成，无需另等一轮验收再更新 `latest`。
 
-固定版本验证可用后，取本次构建记录中的摘要，让 `latest` 指向**同一份已验证产物**，不重新构建：
-
-```sh
-release_digest="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["containerimage.digest"])' "$release_dir/build.json")"
-docker buildx imagetools create -t "$image_repo:latest" "$image_repo@$release_digest"
-docker buildx imagetools inspect "$image_repo:latest"
-```
-
-最后核对 `latest` 与固定版本的顶层摘要及两种平台一致，保留构建记录、源码提交号、固定标签、摘要、实际检查和未验证项在 `output/releases/版本/`，交付时说明。CHANGELOG 按版本记录用户可见变化；源码标签和 OCI 标签把版本对应到确切代码。保留旧固定版本作为回退，不在清理中删除。
+保留构建记录、源码提交号、固定标签、摘要、实际本地检查和未验证项在 `output/releases/版本/`，交付时说明。仿真与实机试用分别记录，构建成功不等于两种架构都已实机运行验证。构建或上传异常时如实记录标签状态，不宣称发布完成。CHANGELOG 按版本记录用户可见变化；源码标签和 OCI 标签把版本对应到确切代码。保留旧固定版本作为回退，不在清理中删除。
 
 镜像发布到此结束。更新本机、服务器或群晖是另一项操作，要按 [README 的备份、更新和恢复方法](https://github.com/weidaye1122/DockerMonitor#数据与备份) 核对原项目、挂载和回退版本，不随发布自动重建容器。
 
