@@ -32,11 +32,39 @@ def main(names):
     session.trust_env = False
     session.headers['X-Monitor-Request'] = '1'
     base = 'http://127.0.0.1:8080'
-    def request(method, path, **kwargs):
-        response = session.request(method, base + path, timeout=30, **kwargs)
+
+    def refresh_csrf():
+        response = session.request('GET', base + '/api/auth/csrf', timeout=30)
         if response.status_code >= 400:
-            raise RuntimeError('Repair API refused the request')
-        return response.json()
+            raise RuntimeError('Repair API refused the CSRF request')
+        try:
+            payload = response.json()
+        except ValueError:
+            raise RuntimeError('Repair API refused the CSRF request') from None
+        token = payload.get('token') if isinstance(payload, dict) else None
+        if not isinstance(token, str) or not token:
+            raise RuntimeError('Repair API refused the CSRF request')
+        session.headers['X-CSRF-Token'] = token
+
+    def request(method, path, **kwargs):
+        mutation = method.upper() not in ('GET', 'HEAD', 'OPTIONS')
+        for attempt in range(2):
+            if mutation:
+                # Login changes the session binding; fetch for each write.
+                refresh_csrf()
+            response = session.request(method, base + path, timeout=30, **kwargs)
+            if mutation and attempt == 0 and response.status_code == 403:
+                try:
+                    rejected = response.json()
+                except ValueError:
+                    rejected = None
+                # Only this explicit rejection guarantees the operation did not run.
+                if isinstance(rejected, dict) and rejected.get('code') == 'csrf_invalid':
+                    continue
+            if response.status_code >= 400:
+                raise RuntimeError('Repair API refused the request')
+            return response.json()
+
     request('POST', '/api/auth/login', json={'username':os.environ.get('ADMIN_USERNAME','admin'), 'password':os.environ.get('ADMIN_PASSWORD','')})
     if request('GET','/api/policy')['auto']:
         raise RuntimeError('Pause automatic updates before legacy repair')

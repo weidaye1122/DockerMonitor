@@ -6,7 +6,7 @@ Docker 容器监控与镜像更新工具，支持卡片/列表、浅色/暗色�
 
 ## 安装
 
-镜像：[weidaye1122/docker_monitor](https://hub.docker.com/r/weidaye1122/docker_monitor)。支持 `linux/amd64`（常见 x86 群晖、PC）和 `linux/arm64`（ARM64 主机）。`latest` 跟随最新正式版本，固定版本可使用 `1.0.2`。版本改动见 [更新日志](https://github.com/weidaye1122/DockerMonitor/blob/main/CHANGELOG.md)。
+镜像：[weidaye1122/docker_monitor](https://hub.docker.com/r/weidaye1122/docker_monitor)。支持 `linux/amd64`（常见 x86 设备）和 `linux/arm64`（ARM64 主机）。`latest` 跟随最新正式版本，固定版本可使用 `1.0.3`。版本改动见 [更新日志](https://github.com/weidaye1122/DockerMonitor/blob/main/CHANGELOG.md)。
 
 ### Compose 安装（推荐）
 
@@ -41,7 +41,7 @@ docker compose ps
 docker compose logs --tail=50
 ```
 
-打开 `http://主机IP:9090`，使用配置的账号密码登录。群晖可在 Container Manager 中创建项目并粘贴以上 YAML；建议项目目录为 `/volume1/docker/DockerMonitor`。若 9090 已占用，可改为 `"19090:8080"` 并访问 19090 端口。`./data` 保存策略、任务及通知配置，升级时保留该目录。Docker socket 挂载让程序能够管理主机容器，请只向信任的网络和使用者开放。
+打开 `http://主机IP:9090`，使用配置的账号密码登录。若 9090 已占用，可改为 `"19090:8080"` 并访问 19090 端口。`./data` 保存策略、任务及通知配置，升级时保留该目录。Docker socket 挂载让程序能够管理主机容器，请只向信任的网络和使用者开放。
 
 升级前先按 [数据与备份说明](https://github.com/weidaye1122/DockerMonitor#数据与备份) 核对实际挂载、完成备份，并保留旧镜像。在原部署目录、原 Compose 项目中执行：
 
@@ -50,7 +50,7 @@ docker compose pull docker-monitor
 docker compose up -d --no-deps docker-monitor
 ```
 
-固定版本安装将镜像改为 `weidaye1122/docker_monitor:1.0.2`。仅允许本机访问时，将端口改为 `"127.0.0.1:9090:8080"`。
+固定版本安装将镜像改为 `weidaye1122/docker_monitor:1.0.3`。仅允许本机访问时，将端口改为 `"127.0.0.1:9090:8080"`。
 
 ### Docker run 安装
 
@@ -85,7 +85,7 @@ curl -fsS http://127.0.0.1:9090/healthz
 
 ## 反向代理与穿透隧道
 
-通过 Lucky、Nginx/Nginx Proxy Manager、群晖反向代理，以及 FRP、Cloudflare Tunnel 等隧道访问时，无需填写 `PUBLIC_URL` 或可信代理地址才能登录。页面自动获取 Cookie 和会话绑定的签名 CSRF Token，登录、退出和所有写操作均提交令牌；不再将浏览器外部地址与后端 HTTP 地址比较。支持 HTTPS、非标准端口、IPv6、改写 Host 以及丢失代理头的隧道，局域网 HTTP 直连仍可使用。旧版添加的 `PUBLIC_URL` 可删除，保留也不影响登录。
+通过 Lucky、Nginx/Nginx Proxy Manager 等反向代理，以及 FRP、Cloudflare Tunnel 等隧道访问时，无需填写 `PUBLIC_URL` 或可信代理地址才能登录。页面自动获取 Cookie 和会话绑定的签名 CSRF Token，登录、退出和所有写操作均提交令牌；不再将浏览器外部地址与后端 HTTP 地址比较。支持 HTTPS、非标准端口、IPv6、改写 Host 以及丢失代理头的隧道，局域网 HTTP 直连仍可使用。旧版添加的 `PUBLIC_URL` 可删除，保留也不影响登录。
 
 浏览器自动传递实际 HTTP/HTTPS 协议信息，仅用于 Cookie 的 Secure 标记，不作为请求授权。HTTPS 外部访问即使经过 HTTP 后端，也会使用 Secure、HttpOnly、SameSite=Strict Cookie。CSRF Token 不缓存，并绑定当前会话；令牌过期或服务重启后，页面只对明确被 CSRF 校验拒绝、尚未执行的操作刷新令牌并重试一次。登录过期仍需重新登录。
 
@@ -115,18 +115,20 @@ location / {
 
 ## 维护者发布
 
-这里约定以后的手动发布，不会自动执行。日常开发可直接提交 `main`，有隔离需要再建分支；不要求 PR、多人审核或 GitHub 自动镜像发布。仅整理文档不升版本。
+这里约定以后的手动发布，不会自动执行。日常开发和整理先保留本地待提交修改，用户要求正式发布新版本时再集中提交、打标签并推送 GitHub；单独明确要求保存 Git 检查点时按指定范围执行。日常可在 `main` 开发，有隔离需要再建分支；不要求 PR、多人审核或 GitHub 自动镜像发布。仅整理文档不升版本。
 
-默认流程：**本地验证完成 → AI 递增版本号、整理更新日志 → 一次构建并同时推送固定版本和 `latest`**。功能验证放在发布前的本地阶段，上传后核对发布结果即可。
+默认流程：**本地验证完成 → 用户要求正式发布 → AI 递增版本号、整理更新日志 → 提交源码、打标签并推送 GitHub → 一次构建并同时推送固定版本和 `latest`**。功能验证放在发布前的本地阶段，上传后核对发布结果即可。
 
-1. 先检查 Git 状态和差异，保留其他任务未提交的工作，只提交本次明确文件。先本地构建 `docker-monitor:local`，按改动范围完成必要检查和隔离验证；涉及容器更新、数据保留或恢复时才增加对应测试。普通本地构建用 `dev`，记录未提交差异，不消耗正式版本号。
-2. 需要发布时，由 AI 核对 Git、CHANGELOG 和 Docker Hub 已有版本，负责选取未使用的新版本；默认递增修订号（如 `1.0.2` → `1.0.3`），用户另有指定时按要求处理。把 CHANGELOG 相应“未发布”条目整理为 `X.Y.Z — 日期`，同步文档中的当前版本引用，保留无关待发布条目，不覆盖已发布固定版本。
-3. 正式构建来自干净、已提交的源码，给确切提交打 `vX.Y.Z` 标签，提交和推送沿用当次任务授权。CHANGELOG 版本、Git 标签、镜像固定标签保持一致；Dockerfile 的 `VERSION=X.Y.Z`、`REVISION=完整提交号` 写入已有 OCI 标签。当前已有 `v1.0.0`、`v1.0.1`、`v1.0.2`，不重打或移动这些标签。发布准备期间如果又改了功能代码，先完成相应本地检查。
+开发、试用和测试均在本地完成；早期临时测试的环境只保留为历史记录，不作为发布前提。
 
-下面的 `1.0.3` **仅为下次版本示例，本次没有创建该版本**。本地验证完成后，核对已登录的仓库和可用的本地 buildx 构建器；Docker 登录沿用本机配置，不把令牌放文档、命令参数或构建参数。发布不改变现用容器或部署设置。以下变量在同一 shell 中使用：
+1. 日常查看 Git 状态和差异，保留本地及其他任务未提交的工作，不在每次修改完成后自动暂存、提交或推送。先本地构建 `docker-monitor:local`，按改动范围完成必要检查和隔离验证；涉及容器更新、数据保留或恢复时才增加对应测试。普通本地构建用 `dev`，记录未提交差异，不消耗正式版本号。
+2. 需要发布时，由 AI 核对 Git、CHANGELOG 和 Docker Hub 已有版本，负责选取未使用的新版本；默认递增修订号（如 `1.0.3` → `1.0.4`），用户另有指定时按要求处理。把 CHANGELOG 相应“未发布”条目整理为 `X.Y.Z — 日期`，同步文档中的当前版本引用，保留无关待发布条目，不覆盖已发布固定版本。
+3. 审查本次版本累积的待发布改动，连同版本说明一起提交，给确切提交打 `vX.Y.Z` 标签并推送 GitHub。保留无关或未完成的本地工作，必要时从发布提交建立干净工作目录构建。正式构建来自干净、已提交的源码；CHANGELOG 版本、Git 标签、镜像固定标签保持一致，Dockerfile 的 `VERSION=X.Y.Z`、`REVISION=完整提交号` 写入已有 OCI 标签。当前已有 `v1.0.0`、`v1.0.1`、`v1.0.2`、`v1.0.3`，不重打或移动这些标签。发布准备期间如果又改了功能代码，先完成相应本地检查。
+
+下面的 `1.0.4` **仅为下次版本示例，实际发布前仍需核对已有标签**。本地验证完成后，核对已登录的仓库和可用的本地 buildx 构建器；Docker 登录沿用本机配置，不把令牌放文档、命令参数或构建参数。发布不改变现用容器或部署设置。以下变量在同一 shell 中使用：
 
 ```sh
-release_version=1.0.3
+release_version=1.0.4
 image_repo=weidaye1122/docker_monitor
 source_revision="$(git rev-parse HEAD)"
 release_dir="../本地资料/验证/发布/$release_version"
@@ -151,7 +153,7 @@ docker buildx imagetools inspect --raw "$image_repo:$release_version" > "$releas
 
 保留构建记录、源码提交号、固定标签、摘要、实际本地检查和未验证项在 `../本地资料/验证/发布/版本/`，镜像归档放 `../本地资料/镜像归档/`，交付时说明。仿真与实机试用分别记录，构建成功不等于两种架构都已实机运行验证。构建或上传异常时如实记录标签状态，不宣称发布完成。CHANGELOG 按版本记录用户可见变化；源码标签和 OCI 标签把版本对应到确切代码。保留旧固定版本作为回退，不在清理中删除。
 
-镜像发布到此结束。更新本机、服务器或群晖是另一项操作，要按 [README 的备份、更新和恢复方法](https://github.com/weidaye1122/DockerMonitor#数据与备份) 核对原项目、挂载和回退版本，不随发布自动重建容器。
+镜像发布到此结束。更新正在运行的容器是另一项操作，要按 [README 的备份、更新和恢复方法](https://github.com/weidaye1122/DockerMonitor#数据与备份) 核对原项目、挂载和回退版本，不随发布自动重建容器。
 
 ## 真实 Docker 验证
 
@@ -166,4 +168,4 @@ docker buildx imagetools inspect --raw "$image_repo:$release_version" > "$releas
 - 脚本继续将报告写入 `output/integration/results.json`，下次运行会覆盖；需保存的证据先另存到 `../本地资料/验证/日期-本次标记/`，不为目录对齐改写脚本输出。
 - `finally` 先恢复策略再清理；如果恢复请求失败，后续清理可能没有执行。测试后按本次标签、精确 ID、挂载及引用逐项核对。脚本不删除测试镜像和构建缓存，另按 README 的清理规则处理，不能用全局清理补救，也不删预先存在的基础镜像。
 
-没有可确认的专用测试环境时跳过真实测试，并明确说明未验证范围。旧的 NAS 和集成验证证据见 [使用细节与历史部署记录](https://github.com/weidaye1122/DockerMonitor/blob/main/docs/operations.md)，不作为当前版本的验收结果。
+没有可确认的本地专用测试环境时跳过真实测试，并明确说明未验证范围。早期临时测试和集成验证证据见 [使用细节与历史部署记录](https://github.com/weidaye1122/DockerMonitor/blob/main/docs/operations.md)，不作为当前测试目标或当前版本的验收结果。

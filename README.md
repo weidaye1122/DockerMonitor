@@ -2,7 +2,7 @@
 
 连接单个 Docker 引擎，查看容器状态和 CPU/内存，支持启停、重启、镜像检查、手动/定时更新及 Bark 通知。沿用已确认的卡片/列表界面，支持浅色、暗色与跟随系统。主要供自用和少量分享。
 
-源码：[weidaye1122/DockerMonitor](https://github.com/weidaye1122/DockerMonitor)；镜像：[weidaye1122/docker_monitor](https://hub.docker.com/r/weidaye1122/docker_monitor)。已有正式代码版本为 `v1.0.2`，固定镜像标签为 `1.0.2`，支持 `linux/amd64`、`linux/arm64`；正式发布时同时更新固定版本和 `latest`。改动见 [CHANGELOG](CHANGELOG.md)。
+源码：[weidaye1122/DockerMonitor](https://github.com/weidaye1122/DockerMonitor)；镜像：[weidaye1122/docker_monitor](https://hub.docker.com/r/weidaye1122/docker_monitor)。已有正式代码版本为 `v1.0.3`，固定镜像标签为 `1.0.3`，支持 `linux/amd64`、`linux/arm64`；正式发布时同时更新固定版本和 `latest`。改动见 [CHANGELOG](CHANGELOG.md)。
 
 ## 启动
 
@@ -19,7 +19,7 @@ docker compose logs --tail=50 docker-monitor
 
 默认打开 <http://127.0.0.1:9090>。仓库配置只绑定本机回环地址；确需局域网访问时才设置 `MONITOR_BIND=0.0.0.0`，并配置强密码。账号默认 `admin`，空密码仅供本机开发。登录会话有效期 12 小时，退出立即失效，服务重启后需重新登录。
 
-Docker socket 授予程序管理该引擎容器的能力，只向信任的网络和使用者开放。无需获取源码的安装方式、完整 Compose 示例和 `docker run` 命令继续见 [Docker Hub 说明](docs/dockerhub.md#安装)；群晖也可使用其 Compose 示例，不需要改变现有部署设置。
+Docker socket 授予程序管理该引擎容器的能力，只向信任的网络和使用者开放。无需获取源码的安装方式、完整 Compose 示例和 `docker run` 命令继续见 [Docker Hub 说明](docs/dockerhub.md#安装)。
 
 ## 数据与备份
 
@@ -87,7 +87,7 @@ curl -fsS http://127.0.0.1:9090/healthz
 
 外层入口和本地资料不属于代码仓库，不随 Git 同步；其他机器按需创建。本机数据、配置、环境和临时输出由 `.gitignore` 排除，`.dockerignore` 同时排除它们进入构建上下文，并防止误放入仓库的本地资料被打包。保留既有数据和输出路径，测试截图、报告和镜像归档不放源码目录混存。给接手 AI 的约定见 [AGENTS.md](AGENTS.md)。
 
-日常流程：修改 → 必要检查 → 本地构建镜像并在隔离环境验证 → 需要发布时递增版本号，一次构建并同时推送固定版本和 `latest`。文档整理只核对内容和链接；代码改动跑相关基本测试；涉及更新、数据保留、回退或恢复时才增加对应的隔离验证。功能验证在本地完成。
+日常流程：修改 → 必要检查 → 本地构建镜像并在本地隔离环境验证，结果先保留在本地。用户要求正式发布时，再递增版本、整理日志、提交源码并推送 Git 标签，随后一次构建并同时推送固定版本和 `latest`。开发、试用和测试均在本地进行。文档整理只核对内容和链接；代码改动跑相关基本测试；涉及更新、数据保留、回退或恢复时才增加对应的本地隔离验证。
 
 ```sh
 # 尚无可用虚拟环境时再创建；本机现有 ../.venv 可以继续复用。
@@ -112,11 +112,13 @@ docker build --build-arg VERSION=dev \
 
 ## Git 与发布
 
-Git 保存历史，GitHub 同步代码；日常可以直接提交 `main`，不强制 PR 或多人审批，较大改动需要隔离时再用分支。先检查差异，只提交本任务文件，保留已有未提交工作、旧版本和历史；提交与推送按当前对话已有授权执行。
+Git 默认在正式发布新版本时集中保存源码历史并同步 GitHub。日常开发、测试、文档和目录整理保留为本地待提交修改，完成任务后不自动暂存、提交、推送或打标签；查看 Git 状态和差异照常进行。用户另行明确要求 Git 提交或同步检查点时，按其要求执行。
 
-CHANGELOG 的“未发布”记录待发布改动，文档维护不单独升版本。正式发布时由 AI 核对 Git、CHANGELOG 和 Docker Hub 已有版本，负责递增版本号，默认递增修订号（如 `1.0.2` → `1.0.3`），用户另有指定时按要求处理；普通本地试用用 `dev`。对应关系是：`CHANGELOG X.Y.Z` → Git 标签 `vX.Y.Z` / 确切提交 → 镜像 `weidaye1122/docker_monitor:X.Y.Z`；Dockerfile 已支持 `VERSION`、`REVISION` 标签。本地验证完成后，用同一次 amd64、arm64 构建同时发布 `X.Y.Z` 和 `latest`，保留旧固定版本。上传后核对两个标签和平台清单，确认发布结果。
+日常可以在 `main` 本地开发，不强制 PR 或多人审批，较大改动需要隔离时再用分支。发布时审查本次版本包含的全部待发布改动，只提交已核对的发布范围，保留其他未完成或无关工作、旧版本和历史。尚未提交可以是日常任务的正常交付状态。
 
-沿用 [现有 Docker Hub 文档中的手动发布步骤](docs/dockerhub.md#维护者发布)，不新增 GitHub 自动镜像发布、多仓库同步或定时任务。发布完成不代表服务器或群晖已更新。
+CHANGELOG 的“未发布”记录待发布改动，文档维护不单独升版本。正式发布时由 AI 核对 Git、CHANGELOG 和 Docker Hub 已有版本，负责递增版本号，默认递增修订号（如 `1.0.3` → `1.0.4`），用户另有指定时按要求处理；普通本地试用用 `dev`。对应关系是：`CHANGELOG X.Y.Z` → Git 标签 `vX.Y.Z` / 确切提交 → 镜像 `weidaye1122/docker_monitor:X.Y.Z`；Dockerfile 已支持 `VERSION`、`REVISION` 标签。本地验证完成后，用同一次 amd64、arm64 构建同时发布 `X.Y.Z` 和 `latest`，保留旧固定版本。上传后核对两个标签和平台清单，确认发布结果。
+
+沿用 [现有 Docker Hub 文档中的手动发布步骤](docs/dockerhub.md#维护者发布)，不新增 GitHub 自动镜像发布、多仓库同步或定时任务。发布目标是 Docker Hub；更新正在运行的容器另行处理。
 
 ## 本地及项目 Docker 清理
 
@@ -142,4 +144,4 @@ CHANGELOG 的“未发布”记录待发布改动，文档维护不单独升版�
 
 ## 验证记录
 
-旧 README 中的 NAS 操作、镜像 ID、验证结论和未覆盖项完整保留在 [历史部署与验证](docs/operations.md#历史部署与验证)。历史通过记录不能代替当前验证；本次维护规范整理没有重新构建、发布镜像或更新任何部署。
+旧 README 中早期临时测试的操作、镜像 ID、验证结论和未覆盖项保留在 [历史部署与验证](docs/operations.md#历史部署与验证)，不作为当前测试或部署目标。当前验证以本地检查及发布记录为准，模拟测试与真实场景验证分别说明。
